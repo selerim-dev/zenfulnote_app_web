@@ -29,18 +29,18 @@ export default function Home() {
             />
             <div className="absolute inset-0 bg-white/50" />
           </div>
-          <div className="mx-auto grid w-full max-w-7xl items-center gap-8 px-4 py-8 sm:px-6 sm:py-10 lg:min-h-[calc(100svh-80px)] lg:grid-cols-[0.82fr_1.18fr] lg:gap-10 lg:px-8">
+          <div className="mx-auto grid w-full max-w-7xl items-center gap-7 px-5 py-7 sm:gap-8 sm:px-6 sm:py-10 lg:min-h-[calc(100svh-80px)] lg:grid-cols-[0.82fr_1.18fr] lg:gap-10 lg:px-8">
             <div className="max-w-xl">
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">
                 {homeContent.hero.eyebrow}
               </p>
-              <h1 className="mt-5 text-5xl font-medium leading-[0.98] text-black sm:text-6xl">
+              <h1 className="mt-4 text-4xl font-medium leading-[1] text-black sm:mt-5 sm:text-6xl sm:leading-[0.98]">
                 {homeContent.hero.title}
               </h1>
-              <p className="mt-5 max-w-lg text-base leading-7 text-muted sm:text-lg">
+              <p className="mt-4 max-w-lg text-[0.95rem] leading-6 text-muted sm:mt-5 sm:text-lg sm:leading-7">
                 {homeContent.hero.description}
               </p>
-              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <div className="mt-6 flex flex-col gap-3 sm:mt-7 sm:flex-row">
                 <AppDownloadLinks compact includeStores={false} />
                 <Link
                   href="/blog"
@@ -56,14 +56,14 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="border-b border-black/10 bg-white/88 sm:bg-[#f6f4ef]">
-          <div className="mx-auto grid w-full max-w-7xl divide-y divide-black/10 px-4 sm:gap-px sm:divide-y-0 sm:bg-black/10 sm:px-6 lg:grid-cols-3 lg:px-8">
+        <section className="border-b border-black/10 bg-white sm:bg-[#f6f4ef]">
+          <div className="mx-auto grid w-full max-w-xl divide-y divide-black/10 px-5 sm:max-w-7xl sm:gap-px sm:divide-y-0 sm:bg-black/10 sm:px-6 lg:grid-cols-3 lg:px-8">
             {homeContent.proofPoints.map((point) => (
               <div
                 key={point}
-                className="bg-transparent py-5 backdrop-blur-sm sm:bg-white/78 sm:px-5 sm:py-6 lg:px-8"
+                className="bg-transparent py-4 backdrop-blur-sm sm:bg-white/78 sm:px-5 sm:py-6 lg:px-8"
               >
-                <p className="max-w-sm text-[0.95rem] leading-6 text-black/72 sm:text-sm">
+                <p className="max-w-sm text-[0.88rem] leading-5 text-black/68 sm:text-sm sm:leading-6">
                   {point}
                 </p>
               </div>
