@@ -56,11 +56,14 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="border-b border-black/10 bg-[#f6f4ef]">
-          <div className="mx-auto grid w-full max-w-7xl gap-px bg-black/10 px-4 sm:px-6 lg:grid-cols-3 lg:px-8">
+        <section className="border-b border-black/10 bg-white/88 sm:bg-[#f6f4ef]">
+          <div className="mx-auto grid w-full max-w-7xl divide-y divide-black/10 px-4 sm:gap-px sm:divide-y-0 sm:bg-black/10 sm:px-6 lg:grid-cols-3 lg:px-8">
             {homeContent.proofPoints.map((point) => (
-              <div key={point} className="bg-white/78 px-0 py-6 backdrop-blur-sm lg:px-8">
-                <p className="max-w-sm text-sm leading-6 text-black/72">
+              <div
+                key={point}
+                className="bg-transparent py-5 backdrop-blur-sm sm:bg-white/78 sm:px-5 sm:py-6 lg:px-8"
+              >
+                <p className="max-w-sm text-[0.95rem] leading-6 text-black/72 sm:text-sm">
                   {point}
                 </p>
               </div>

@@ -8,12 +8,12 @@ export function ProductDeck() {
   }));
 
   return (
-    <div className="relative mx-auto h-[390px] w-full max-w-[680px] overflow-hidden sm:h-[560px] lg:h-[620px]">
+    <div className="relative mx-auto h-[430px] w-full max-w-[680px] overflow-hidden sm:h-[560px] lg:h-[620px]">
       <div className="absolute left-8 top-8 z-[6] hidden rounded-full border border-black/10 bg-white/86 px-4 py-2 text-xs font-medium uppercase tracking-[0.14em] text-black/62 shadow-[0_16px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:block">
         Discover yourself
       </div>
 
-      <div className="absolute right-4 top-6 z-[3] grid size-20 place-items-center rounded-2xl border border-black/10 bg-white/88 shadow-[0_18px_70px_rgba(0,0,0,0.10)] backdrop-blur">
+      <div className="absolute right-4 top-6 z-[3] hidden size-20 place-items-center rounded-2xl border border-black/10 bg-white/88 shadow-[0_18px_70px_rgba(0,0,0,0.10)] backdrop-blur sm:grid">
         <Image
           src="/images/brand/main-logo.png"
           alt=""
@@ -26,15 +26,15 @@ export function ProductDeck() {
       {screenshots.map((screenshot, index) => {
         const position =
           index === 0
-            ? "left-[8%] top-[16%] z-[2] rotate-[-4deg] scale-[0.78] opacity-80"
+            ? "left-[8%] top-[16%] z-[2] hidden rotate-[-4deg] scale-[0.78] opacity-80 sm:block"
             : index === 1
-              ? "left-1/2 top-[6%] z-[4] -translate-x-1/2 scale-100"
-              : "right-[5%] top-[24%] z-[1] rotate-[4deg] scale-[0.72] opacity-70";
+              ? "left-1/2 top-[5%] z-[4] -translate-x-1/2 scale-100 sm:top-[6%]"
+              : "right-[5%] top-[24%] z-[1] hidden rotate-[4deg] scale-[0.72] opacity-70 sm:block";
 
         return (
           <figure
             key={screenshot.src}
-            className={`hero-phone absolute aspect-[1242/2688] w-[226px] overflow-hidden rounded-[22px] border border-black/10 bg-white shadow-[0_30px_90px_rgba(0,0,0,0.16)] sm:w-[315px] sm:rounded-[26px] ${position}`}
+            className={`hero-phone absolute aspect-[1242/2688] w-[238px] overflow-hidden rounded-[22px] border border-black/10 bg-white shadow-[0_30px_90px_rgba(0,0,0,0.16)] sm:w-[315px] sm:rounded-[26px] ${position}`}
           >
             <Image
               src={screenshot.src}
