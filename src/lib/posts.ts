@@ -14,7 +14,7 @@ export type BlogPostMeta = {
   featuredImage?: string;
   featuredImageAlt?: string;
   published: boolean;
-  author: "ZenfulNote";
+  author: string;
 };
 
 export type BlogPost = BlogPostMeta & {
@@ -47,8 +47,8 @@ function normalizePost(fileName: string): BlogPost {
     }
   }
 
-  if (data.author !== "ZenfulNote") {
-    throw new Error(`Blog post ${fileName} must use author "ZenfulNote"`);
+  if (typeof data.author !== "string" || !data.author) {
+    throw new Error(`Blog post ${fileName} must include a string author field`);
   }
 
   if (typeof data.published !== "boolean") {
@@ -87,7 +87,7 @@ function normalizePost(fileName: string): BlogPost {
         ? data.featuredImageAlt
         : undefined,
     published: data.published,
-    author: "ZenfulNote",
+    author: data.author,
     content,
     readingTime: readTime(content),
   };

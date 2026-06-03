@@ -16,6 +16,12 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Looprail Custom CMS
+
+Looprail can create unpublished blog drafts and publish approved articles through
+server API endpoints. See [docs/looprail-custom-cms.md](docs/looprail-custom-cms.md)
+for the base URL, health path, draft path, publish path, and API key header.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
