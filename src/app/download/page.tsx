@@ -44,7 +44,7 @@ export default function DownloadPage() {
             sizes="100vw"
           />
           <div className="absolute inset-0 -z-10 bg-black/58" />
-          <div className="mx-auto grid min-h-[calc(100svh-80px)] w-full max-w-7xl items-center gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[0.82fr_1.18fr] lg:px-8">
+          <div className="mx-auto grid w-full max-w-7xl items-center gap-8 px-4 py-10 sm:px-6 sm:py-12 lg:min-h-[calc(100svh-80px)] lg:grid-cols-[0.82fr_1.18fr] lg:gap-10 lg:px-8">
             <div className="max-w-xl">
               <div className="flex items-center gap-4">
                 <Image

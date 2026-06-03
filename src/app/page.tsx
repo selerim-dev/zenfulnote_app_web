@@ -29,7 +29,7 @@ export default function Home() {
             />
             <div className="absolute inset-0 bg-white/50" />
           </div>
-          <div className="mx-auto grid min-h-[calc(100svh-80px)] w-full max-w-7xl items-center gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[0.82fr_1.18fr] lg:px-8">
+          <div className="mx-auto grid w-full max-w-7xl items-center gap-8 px-4 py-8 sm:px-6 sm:py-10 lg:min-h-[calc(100svh-80px)] lg:grid-cols-[0.82fr_1.18fr] lg:gap-10 lg:px-8">
             <div className="max-w-xl">
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">
                 {homeContent.hero.eyebrow}
@@ -113,7 +113,7 @@ export default function Home() {
                   </div>
                 </div>
                 <div className={index % 2 === 1 ? "lg:order-1" : ""}>
-                  <div className="feature-stage relative grid min-h-[480px] place-items-center overflow-hidden rounded-[28px] border border-black/10 bg-[#fbfaf6] p-8 shadow-[0_28px_120px_rgba(0,0,0,0.08)]">
+                  <div className="feature-stage relative grid min-h-[360px] place-items-center overflow-hidden rounded-[22px] border border-black/10 bg-[#fbfaf6] p-4 shadow-[0_28px_120px_rgba(0,0,0,0.08)] sm:min-h-[480px] sm:rounded-[28px] sm:p-8">
                     <Image
                       src={
                         index === 1

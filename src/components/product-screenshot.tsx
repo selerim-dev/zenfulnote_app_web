@@ -15,7 +15,7 @@ export function ProductScreenshot({
 }: ProductScreenshotProps) {
   return (
     <figure
-      className={`product-screenshot relative mx-auto aspect-[1242/2688] w-full max-w-[310px] overflow-hidden rounded-[20px] border border-black/10 bg-white shadow-[0_26px_90px_rgba(0,0,0,0.12)] ${className}`}
+      className={`product-screenshot relative mx-auto aspect-[1242/2688] w-full max-w-[250px] overflow-hidden rounded-[18px] border border-black/10 bg-white shadow-[0_26px_90px_rgba(0,0,0,0.12)] sm:max-w-[310px] sm:rounded-[20px] ${className}`}
     >
       <Image
         src={src}
@@ -24,7 +24,7 @@ export function ProductScreenshot({
         className="object-cover"
         fetchPriority={priority ? "high" : "auto"}
         loading={priority ? "eager" : "lazy"}
-        sizes="(min-width: 1024px) 310px, 78vw"
+        sizes="(min-width: 1024px) 310px, (min-width: 640px) 310px, 68vw"
       />
     </figure>
   );

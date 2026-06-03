@@ -39,7 +39,7 @@ export function SiteFooter() {
           </p>
           <a
             href={`mailto:${siteConfig.supportEmail}`}
-            className="mt-5 inline-flex items-center gap-2 text-sm text-white/78 transition hover:text-white"
+            className="mt-5 inline-flex min-h-10 items-center gap-2 text-sm text-white/78 transition hover:text-white"
           >
             <Mail aria-hidden="true" size={17} strokeWidth={1.8} />
             {siteConfig.supportEmail}
@@ -51,7 +51,7 @@ export function SiteFooter() {
             <Link
               href={link.href}
               key={link.href}
-              className="text-sm text-white/68 transition hover:text-white"
+              className="inline-flex min-h-10 items-center text-sm text-white/68 transition hover:text-white"
             >
               {link.label}
             </Link>
@@ -89,12 +89,18 @@ export function SiteFooter() {
               />
             </a>
           </div>
-          <div className="mt-6 grid gap-3 text-sm text-white/68">
-            <a href={siteConfig.links.appStore} rel="noreferrer" target="_blank">
+          <div className="mt-6 grid gap-2 text-sm text-white/68">
+            <a
+              href={siteConfig.links.appStore}
+              className="inline-flex min-h-10 items-center transition hover:text-white"
+              rel="noreferrer"
+              target="_blank"
+            >
               App Store
             </a>
             <a
               href={siteConfig.links.googlePlay}
+              className="inline-flex min-h-10 items-center transition hover:text-white"
               rel="noreferrer"
               target="_blank"
             >

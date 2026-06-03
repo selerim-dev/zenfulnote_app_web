@@ -32,7 +32,7 @@ export function BlogFilterGrid({ categories, posts }: BlogFilterGridProps) {
             type="button"
             aria-pressed={activeCategory === category}
             onClick={() => setActiveCategory(category)}
-            className="min-h-10 rounded-full border border-black/15 px-4 text-sm font-medium text-black transition hover:border-black aria-pressed:bg-black aria-pressed:text-white"
+            className="min-h-11 rounded-full border border-black/15 px-4 text-sm font-medium text-black transition hover:border-black aria-pressed:bg-black aria-pressed:text-white"
           >
             {category}
           </button>

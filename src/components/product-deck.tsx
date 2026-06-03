@@ -8,7 +8,7 @@ export function ProductDeck() {
   }));
 
   return (
-    <div className="relative mx-auto h-[460px] w-full max-w-[680px] overflow-hidden sm:h-[560px] lg:h-[620px]">
+    <div className="relative mx-auto h-[390px] w-full max-w-[680px] overflow-hidden sm:h-[560px] lg:h-[620px]">
       <div className="absolute left-8 top-8 z-[6] hidden rounded-full border border-black/10 bg-white/86 px-4 py-2 text-xs font-medium uppercase tracking-[0.14em] text-black/62 shadow-[0_16px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:block">
         Discover yourself
       </div>
@@ -34,7 +34,7 @@ export function ProductDeck() {
         return (
           <figure
             key={screenshot.src}
-            className={`hero-phone absolute aspect-[1242/2688] w-[260px] overflow-hidden rounded-[26px] border border-black/10 bg-white shadow-[0_30px_90px_rgba(0,0,0,0.16)] sm:w-[315px] ${position}`}
+            className={`hero-phone absolute aspect-[1242/2688] w-[226px] overflow-hidden rounded-[22px] border border-black/10 bg-white shadow-[0_30px_90px_rgba(0,0,0,0.16)] sm:w-[315px] sm:rounded-[26px] ${position}`}
           >
             <Image
               src={screenshot.src}
@@ -43,7 +43,7 @@ export function ProductDeck() {
               className="object-cover"
               loading={index === 1 ? "eager" : "lazy"}
               fetchPriority={index === 1 ? "high" : "auto"}
-              sizes="(min-width: 1024px) 315px, 70vw"
+              sizes="(min-width: 1024px) 315px, (min-width: 640px) 315px, 58vw"
             />
           </figure>
         );

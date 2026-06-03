@@ -57,7 +57,7 @@ export function BlogCard({ post, priority = false }: BlogCardProps) {
         </p>
         <Link
           href={`/blog/${post.slug}`}
-          className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-black"
+          className="mt-5 inline-flex min-h-10 items-center gap-2 text-sm font-medium text-black"
         >
           Read article
           <ArrowRight

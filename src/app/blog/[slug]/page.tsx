@@ -71,7 +71,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
         <article className="mx-auto w-full max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
           <Link
             href="/blog"
-            className="mb-10 inline-flex items-center gap-2 text-sm font-medium text-muted transition hover:text-black"
+            className="mb-8 inline-flex min-h-10 items-center gap-2 text-sm font-medium text-muted transition hover:text-black sm:mb-10"
           >
             <ArrowLeft aria-hidden="true" size={16} strokeWidth={1.8} />
             Blog
@@ -90,10 +90,10 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
               <span aria-hidden="true">/</span>
               <span>{post.readingTime}</span>
             </div>
-            <h1 className="editorial mt-5 text-4xl font-semibold leading-[1.06] text-black sm:text-5xl">
+            <h1 className="editorial mt-5 text-[2.35rem] font-semibold leading-[1.06] text-black sm:text-5xl">
               {post.title}
             </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-muted">
+            <p className="mt-5 max-w-2xl text-base leading-7 text-muted sm:mt-6 sm:text-lg sm:leading-8">
               {post.description}
             </p>
           </header>
