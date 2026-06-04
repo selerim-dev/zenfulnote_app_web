@@ -9,8 +9,10 @@ import { SiteHeader } from "@/components/site-header";
 import { homeContent } from "@/config/home-content";
 import { getAllPosts } from "@/lib/posts";
 
-export default function Home() {
-  const latestPosts = getAllPosts().slice(0, 4);
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const latestPosts = (await getAllPosts()).slice(0, 4);
 
   return (
     <div className="flex min-h-screen flex-col bg-white text-black">

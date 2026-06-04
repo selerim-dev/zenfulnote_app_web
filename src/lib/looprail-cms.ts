@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { BlobNotFoundError, del, get, put } from "@vercel/blob";
 import matter from "gray-matter";
 
 export const DEFAULT_LOOPRAIL_AUTH_HEADER = "x-looprail-api-key";
@@ -9,6 +10,7 @@ export const LOOPRAIL_API_KEY_ENV = "LOOPRAIL_CMS_API_KEY";
 export const LOOPRAIL_AUTH_HEADER_ENV = "LOOPRAIL_CMS_AUTH_HEADER";
 export const LOOPRAIL_PUBLIC_BASE_URL_ENV = "LOOPRAIL_CMS_PUBLIC_BASE_URL";
 export const LOOPRAIL_STORAGE_MODE_ENV = "LOOPRAIL_CMS_STORAGE_MODE";
+export const LOOPRAIL_RUNTIME_DIRECTORY_ENV = "LOOPRAIL_CMS_RUNTIME_DIRECTORY";
 export const LOOPRAIL_GITHUB_TOKEN_ENV = "LOOPRAIL_CMS_GITHUB_TOKEN";
 export const LOOPRAIL_GITHUB_REPO_ENV = "LOOPRAIL_CMS_GITHUB_REPO";
 export const LOOPRAIL_GITHUB_BRANCH_ENV = "LOOPRAIL_CMS_GITHUB_BRANCH";
@@ -16,14 +18,24 @@ export const LOOPRAIL_GITHUB_COMMITTER_NAME_ENV =
   "LOOPRAIL_CMS_GITHUB_COMMITTER_NAME";
 export const LOOPRAIL_GITHUB_COMMITTER_EMAIL_ENV =
   "LOOPRAIL_CMS_GITHUB_COMMITTER_EMAIL";
+export const BLOB_READ_WRITE_TOKEN_ENV = "BLOB_READ_WRITE_TOKEN";
+export const BLOB_STORE_ID_ENV = "BLOB_STORE_ID";
 export const DEFAULT_LOOPRAIL_BASE_URL = "https://www.zenfulnote.app";
 
 const MAX_SLUG_LENGTH = 120;
 const MAX_SHORT_TEXT_LENGTH = 500;
+const MAX_URL_LENGTH = 2_000;
 const MAX_TITLE_LENGTH = 220;
 const MAX_BODY_LENGTH = 250_000;
 const POSTS_DIRECTORY = path.join(process.cwd(), "content", "blog");
 const POSTS_REPOSITORY_DIRECTORY = "content/blog";
+const RUNTIME_ARTICLES_DIRECTORY = path.join(
+  process.cwd(),
+  ".looprail",
+  "articles",
+);
+const BLOB_ARTICLES_DIRECTORY = "looprail/articles";
+const BLOB_INDEX_PATH = `${BLOB_ARTICLES_DIRECTORY}/index.json`;
 
 export type LooprailArticleStatus = "draft" | "published";
 
@@ -34,6 +46,8 @@ export type LooprailArticlePayload = {
   meta_description?: string;
   body_markdown?: string;
   html?: string;
+  featured_image?: string;
+  featured_image_alt?: string;
   primary_keyword?: string;
   secondary_keywords?: string[];
   search_intent?: string;
@@ -42,8 +56,12 @@ export type LooprailArticlePayload = {
   tags?: string[];
   status?: string;
   source?: string;
+  source_action_intent_id?: string;
+  idempotency_key?: string;
   quality_evaluation?: Record<string, unknown>;
   external_article_id?: string;
+  images?: Record<string, unknown>[];
+  assets?: Record<string, unknown>[];
 };
 
 export type NormalizedLooprailArticle = {
@@ -53,6 +71,8 @@ export type NormalizedLooprailArticle = {
   metaDescription?: string;
   content: string;
   contentFormat: "markdown" | "html";
+  featuredImage?: string;
+  featuredImageAlt?: string;
   primaryKeyword?: string;
   secondaryKeywords: string[];
   searchIntent?: string;
@@ -61,22 +81,66 @@ export type NormalizedLooprailArticle = {
   tags: string[];
   status: LooprailArticleStatus;
   source: string;
+  sourceActionIntentId?: string;
+  idempotencyKey?: string;
   qualityEvaluation?: Record<string, unknown>;
   externalArticleId?: string;
+  images?: Record<string, unknown>[];
+  assets?: Record<string, unknown>[];
+};
+
+export type StoredLooprailArticle = {
+  schemaVersion: 1;
+  id: string;
+  slug: string;
+  status: LooprailArticleStatus;
+  published: boolean;
+  title: string;
+  description: string;
+  metaDescription?: string;
+  date: string;
+  updatedAt?: string;
+  category: string;
+  tags: string[];
+  featuredImage?: string;
+  featuredImageAlt?: string;
+  author: string;
+  content: string;
+  contentFormat: "markdown" | "html";
+  looprail: {
+    id: string;
+    source: string;
+    sourceActionIntentId?: string;
+    idempotencyKey?: string;
+    status: LooprailArticleStatus;
+    contentFormat: "markdown" | "html";
+    primaryKeyword?: string;
+    secondaryKeywords: string[];
+    searchIntent?: string;
+    contentAngle?: string;
+    qualityEvaluation?: Record<string, unknown>;
+    externalArticleId?: string;
+    images?: Record<string, unknown>[];
+    assets?: Record<string, unknown>[];
+  };
 };
 
 export type LooprailArticleResult = {
   id: string;
   slug: string;
   status: LooprailArticleStatus;
-  url: string;
-  public_url: string;
+  storage: "filesystem" | "github" | "vercel_blob";
+  rendering_status: "stored" | "public";
+  visibility: "draft" | "public";
+  url?: string;
+  public_url?: string;
   draft_url?: string;
 };
 
 export type PersistLooprailArticleOptions = {
   baseUrl?: string;
   contentDirectory?: string;
+  runtimeDirectory?: string;
   now?: Date;
 };
 
@@ -246,6 +310,42 @@ function optionalJsonObject(
   return value;
 }
 
+function optionalJsonObjectArray(
+  payload: Record<string, unknown>,
+  field: string,
+  issues: string[],
+): Record<string, unknown>[] | undefined {
+  const value = payload[field];
+
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value)) {
+    issues.push(`${field} must be an array of objects`);
+    return undefined;
+  }
+
+  const objects: Record<string, unknown>[] = [];
+  value.forEach((item, index) => {
+    if (!isPlainObject(item)) {
+      issues.push(`${field}[${index}] must be an object`);
+      return;
+    }
+
+    try {
+      JSON.stringify(item);
+    } catch {
+      issues.push(`${field}[${index}] must be JSON serializable`);
+      return;
+    }
+
+    objects.push(item);
+  });
+
+  return objects;
+}
+
 function unsafeContentIssue(content: string): string | undefined {
   if (/^\s*(import|export)\s+/im.test(content)) {
     return "content must not include MDX import or export statements";
@@ -316,6 +416,12 @@ export function validateLooprailArticle(
     MAX_BODY_LENGTH,
   );
   const html = optionalString(payload, "html", issues, MAX_BODY_LENGTH);
+  const featuredImage =
+    optionalString(payload, "featured_image", issues, MAX_URL_LENGTH) ??
+    optionalString(payload, "featuredImage", issues, MAX_URL_LENGTH);
+  const featuredImageAlt =
+    optionalString(payload, "featured_image_alt", issues) ??
+    optionalString(payload, "featuredImageAlt", issues);
   const primaryKeyword = optionalString(payload, "primary_keyword", issues);
   const secondaryKeywords = optionalStringArray(
     payload,
@@ -328,6 +434,18 @@ export function validateLooprailArticle(
     optionalString(payload, "author_name", issues) ?? "Looprail";
   const tags = optionalStringArray(payload, "tags", issues);
   const source = optionalString(payload, "source", issues) ?? "looprail";
+  const sourceActionIntentId = optionalString(
+    payload,
+    "source_action_intent_id",
+    issues,
+    MAX_SLUG_LENGTH,
+  );
+  const idempotencyKey = optionalString(
+    payload,
+    "idempotency_key",
+    issues,
+    MAX_SHORT_TEXT_LENGTH,
+  );
   const qualityEvaluation = optionalJsonObject(
     payload,
     "quality_evaluation",
@@ -339,6 +457,8 @@ export function validateLooprailArticle(
     issues,
     MAX_SLUG_LENGTH,
   );
+  const images = optionalJsonObjectArray(payload, "images", issues);
+  const assets = optionalJsonObjectArray(payload, "assets", issues);
   const statusIssue = readExpectedStatusIssue(payload, expectedStatus);
 
   if (statusIssue) {
@@ -368,6 +488,8 @@ export function validateLooprailArticle(
     metaDescription,
     content: content ?? "",
     contentFormat,
+    featuredImage,
+    featuredImageAlt,
     primaryKeyword,
     secondaryKeywords,
     searchIntent,
@@ -376,10 +498,14 @@ export function validateLooprailArticle(
     tags,
     status: expectedStatus,
     source,
+    sourceActionIntentId,
+    idempotencyKey,
     qualityEvaluation,
     externalArticleId: externalArticleId
       ? normalizeSlug(externalArticleId)
       : undefined,
+    images,
+    assets,
   };
 }
 
@@ -500,6 +626,7 @@ async function readExistingPost(filePath: string) {
 }
 
 type LooprailArticleStorage = {
+  kind: "filesystem" | "github";
   read(slug: string): Promise<ReturnType<typeof matter> | undefined>;
   write(slug: string, content: string, message: string): Promise<void>;
   delete(slug: string, message: string): Promise<void>;
@@ -536,6 +663,7 @@ function createLooprailArticleStorage(
 
 function createFilesystemArticleStorage(contentDirectory: string): LooprailArticleStorage {
   return {
+    kind: "filesystem",
     async read(slug) {
       return readExistingPost(articlePathForSlug(contentDirectory, slug));
     },
@@ -565,11 +693,7 @@ function createFilesystemArticleStorage(contentDirectory: string): LooprailArtic
 
 function shouldUseGithubArticleStorage(env: NodeJS.ProcessEnv): boolean {
   const storageMode = env[LOOPRAIL_STORAGE_MODE_ENV]?.trim().toLowerCase();
-  return (
-    storageMode === "github" ||
-    Boolean(env[LOOPRAIL_GITHUB_TOKEN_ENV]?.trim()) ||
-    Boolean(env.GITHUB_TOKEN?.trim())
-  );
+  return storageMode === "github";
 }
 
 function createGithubArticleStorage(env: NodeJS.ProcessEnv): LooprailArticleStorage {
@@ -601,6 +725,7 @@ function createGithubArticleStorage(env: NodeJS.ProcessEnv): LooprailArticleStor
     "looprail-cms@users.noreply.github.com";
 
   return {
+    kind: "github",
     async read(slug) {
       const file = await readGithubContentFile({
         repository,
@@ -778,6 +903,317 @@ function storageErrorMessage(action: string, error: unknown): string {
   return `Looprail CMS could not ${action}: ${message}`;
 }
 
+type StoredLooprailArticleIndexEntry = {
+  slug: string;
+  title: string;
+  status: LooprailArticleStatus;
+  published: boolean;
+  date: string;
+  updatedAt?: string;
+};
+
+type LooprailRuntimeArticleStore = {
+  kind: "filesystem" | "vercel_blob";
+  read(slug: string): Promise<StoredLooprailArticle | undefined>;
+  readAll(): Promise<StoredLooprailArticle[]>;
+  write(article: StoredLooprailArticle): Promise<void>;
+  delete(slug: string): Promise<void>;
+};
+
+function storageMode(env: NodeJS.ProcessEnv = process.env): string {
+  return env[LOOPRAIL_STORAGE_MODE_ENV]?.trim().toLowerCase() ?? "";
+}
+
+function shouldPersistLegacyMdx(options: PersistLooprailArticleOptions): boolean {
+  return Boolean(options.contentDirectory) || storageMode() === "github";
+}
+
+function hasBlobRuntimeCredentials(env: NodeJS.ProcessEnv): boolean {
+  const hasReadWriteToken = Boolean(env[BLOB_READ_WRITE_TOKEN_ENV]?.trim());
+  const hasOidcStore =
+    Boolean(env.VERCEL_OIDC_TOKEN?.trim()) &&
+    Boolean(env[BLOB_STORE_ID_ENV]?.trim());
+  return hasReadWriteToken || hasOidcStore;
+}
+
+function shouldUseBlobRuntimeStore(env: NodeJS.ProcessEnv): boolean {
+  const mode = storageMode(env);
+  return mode === "blob" || mode === "vercel_blob" || Boolean(env.VERCEL);
+}
+
+function canReadRuntimeArticleStore(
+  options: PersistLooprailArticleOptions = {},
+): boolean {
+  if (options.runtimeDirectory) return true;
+  const mode = storageMode();
+  if (mode === "github") return false;
+  if (shouldUseBlobRuntimeStore(process.env)) {
+    return hasBlobRuntimeCredentials(process.env);
+  }
+  return true;
+}
+
+function createLooprailRuntimeArticleStore(
+  options: PersistLooprailArticleOptions = {},
+): LooprailRuntimeArticleStore {
+  if (options.runtimeDirectory) {
+    return createFilesystemRuntimeArticleStore(options.runtimeDirectory);
+  }
+
+  const mode = storageMode();
+  if (mode === "filesystem") {
+    return createFilesystemRuntimeArticleStore(
+      process.env[LOOPRAIL_RUNTIME_DIRECTORY_ENV]?.trim() ||
+        RUNTIME_ARTICLES_DIRECTORY,
+    );
+  }
+
+  if (shouldUseBlobRuntimeStore(process.env)) {
+    return createBlobRuntimeArticleStore(process.env);
+  }
+
+  if (mode && mode !== "runtime") {
+    throw new LooprailStorageError(
+      `Unsupported ${LOOPRAIL_STORAGE_MODE_ENV} value "${mode}".`,
+      503,
+    );
+  }
+
+  return createFilesystemRuntimeArticleStore(
+    process.env[LOOPRAIL_RUNTIME_DIRECTORY_ENV]?.trim() ||
+      RUNTIME_ARTICLES_DIRECTORY,
+  );
+}
+
+function runtimeArticlePathForSlug(directory: string, slug: string): string {
+  const filePath = path.join(directory, `${slug}.json`);
+  const relativePath = path.relative(directory, filePath);
+
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    throw new LooprailValidationError(["slug resolves outside runtime directory"]);
+  }
+
+  return filePath;
+}
+
+function indexEntryFromArticle(
+  article: StoredLooprailArticle,
+): StoredLooprailArticleIndexEntry {
+  return compactObject({
+    slug: article.slug,
+    title: article.title,
+    status: article.status,
+    published: article.published,
+    date: article.date,
+    updatedAt: article.updatedAt,
+  }) as StoredLooprailArticleIndexEntry;
+}
+
+function sortRuntimeIndex(entries: StoredLooprailArticleIndexEntry[]) {
+  return entries.sort(
+    (first, second) =>
+      new Date(second.updatedAt ?? second.date).getTime() -
+      new Date(first.updatedAt ?? first.date).getTime(),
+  );
+}
+
+function isStoredLooprailArticle(value: unknown): value is StoredLooprailArticle {
+  return (
+    isPlainObject(value) &&
+    value.schemaVersion === 1 &&
+    typeof value.slug === "string" &&
+    typeof value.title === "string" &&
+    typeof value.description === "string" &&
+    typeof value.date === "string" &&
+    typeof value.author === "string" &&
+    typeof value.content === "string" &&
+    (value.status === "draft" || value.status === "published") &&
+    typeof value.published === "boolean" &&
+    Array.isArray(value.tags)
+  );
+}
+
+async function readJsonFile<T>(filePath: string): Promise<T | undefined> {
+  if (!fs.existsSync(filePath)) return undefined;
+  const raw = await readFile(filePath, "utf8");
+  try {
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    throw new LooprailStorageError(storageErrorMessage("read runtime JSON", error));
+  }
+}
+
+async function writeJsonFile(filePath: string, value: unknown) {
+  try {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  } catch (error) {
+    throw new LooprailStorageError(
+      storageErrorMessage("write runtime JSON", error),
+    );
+  }
+}
+
+function createFilesystemRuntimeArticleStore(
+  directory: string,
+): LooprailRuntimeArticleStore {
+  const indexPath = path.join(directory, "index.json");
+
+  async function readIndex() {
+    return (await readJsonFile<StoredLooprailArticleIndexEntry[]>(indexPath)) ?? [];
+  }
+
+  async function writeIndex(entries: StoredLooprailArticleIndexEntry[]) {
+    await writeJsonFile(indexPath, sortRuntimeIndex(entries));
+  }
+
+  async function readArticle(slug: string) {
+    const article = await readJsonFile<StoredLooprailArticle>(
+      runtimeArticlePathForSlug(directory, slug),
+    );
+    return isStoredLooprailArticle(article) ? article : undefined;
+  }
+
+  return {
+    kind: "filesystem",
+    read: readArticle,
+    async readAll() {
+      const index = await readIndex();
+      const articles = await Promise.all(index.map((entry) => readArticle(entry.slug)));
+      return articles.filter(
+        (article): article is StoredLooprailArticle => Boolean(article),
+      );
+    },
+    async write(article) {
+      await writeJsonFile(runtimeArticlePathForSlug(directory, article.slug), article);
+      const index = await readIndex();
+      const nextIndex = [
+        indexEntryFromArticle(article),
+        ...index.filter((entry) => entry.slug !== article.slug),
+      ];
+      await writeIndex(nextIndex);
+    },
+    async delete(slug) {
+      const filePath = runtimeArticlePathForSlug(directory, slug);
+      if (fs.existsSync(filePath)) {
+        await unlink(filePath).catch((error) => {
+          throw new LooprailStorageError(
+            storageErrorMessage("remove runtime article", error),
+          );
+        });
+      }
+      const index = await readIndex();
+      await writeIndex(index.filter((entry) => entry.slug !== slug));
+    },
+  };
+}
+
+async function readBlobJson<T>(pathname: string): Promise<T | undefined> {
+  try {
+    const result = await get(pathname, {
+      access: "private",
+      useCache: false,
+    });
+    if (!result || result.statusCode !== 200 || !result.stream) {
+      return undefined;
+    }
+    const raw = await new Response(result.stream).text();
+    if (!raw.trim()) return undefined;
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    if (error instanceof BlobNotFoundError) {
+      return undefined;
+    }
+    throw new LooprailStorageError(
+      storageErrorMessage("read the Blob article store", error),
+    );
+  }
+}
+
+async function writeBlobJson(pathname: string, value: unknown) {
+  try {
+    await put(pathname, JSON.stringify(value, null, 2), {
+      access: "private",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: "application/json",
+      cacheControlMaxAge: 60,
+    });
+  } catch (error) {
+    throw new LooprailStorageError(
+      storageErrorMessage("write the Blob article store", error),
+    );
+  }
+}
+
+function createBlobRuntimeArticleStore(
+  env: NodeJS.ProcessEnv,
+): LooprailRuntimeArticleStore {
+  if (!hasBlobRuntimeCredentials(env)) {
+    throw new LooprailStorageError(
+      [
+        "Looprail CMS runtime storage is not configured for Vercel.",
+        "Create/connect a private Vercel Blob store for this project so",
+        `${BLOB_READ_WRITE_TOKEN_ENV} is available at runtime.`,
+      ].join(" "),
+      503,
+    );
+  }
+
+  async function readIndex() {
+    return (
+      (await readBlobJson<StoredLooprailArticleIndexEntry[]>(BLOB_INDEX_PATH)) ?? []
+    );
+  }
+
+  async function writeIndex(entries: StoredLooprailArticleIndexEntry[]) {
+    await writeBlobJson(BLOB_INDEX_PATH, sortRuntimeIndex(entries));
+  }
+
+  function blobPathForSlug(slug: string) {
+    return `${BLOB_ARTICLES_DIRECTORY}/${slug}.json`;
+  }
+
+  async function readArticle(slug: string) {
+    const article = await readBlobJson<StoredLooprailArticle>(
+      blobPathForSlug(slug),
+    );
+    return isStoredLooprailArticle(article) ? article : undefined;
+  }
+
+  return {
+    kind: "vercel_blob",
+    read: readArticle,
+    async readAll() {
+      const index = await readIndex();
+      const articles = await Promise.all(index.map((entry) => readArticle(entry.slug)));
+      return articles.filter(
+        (article): article is StoredLooprailArticle => Boolean(article),
+      );
+    },
+    async write(article) {
+      await writeBlobJson(blobPathForSlug(article.slug), article);
+      const index = await readIndex();
+      const nextIndex = [
+        indexEntryFromArticle(article),
+        ...index.filter((entry) => entry.slug !== article.slug),
+      ];
+      await writeIndex(nextIndex);
+    },
+    async delete(slug) {
+      try {
+        await del(blobPathForSlug(slug));
+      } catch (error) {
+        throw new LooprailStorageError(
+          storageErrorMessage("remove the Blob article", error),
+        );
+      }
+      const index = await readIndex();
+      await writeIndex(index.filter((entry) => entry.slug !== slug));
+    },
+  };
+}
+
 function deriveTags(article: NormalizedLooprailArticle): string[] {
   const tags = [...article.tags];
 
@@ -818,11 +1254,15 @@ function buildFrontmatter(
     updatedAt: status === "published" ? today : readStringData(existingData, "updatedAt"),
     category: readStringData(existingData, "category") ?? deriveCategory(article),
     tags: deriveTags(article),
+    featuredImage: article.featuredImage,
+    featuredImageAlt: article.featuredImageAlt,
     published: status === "published",
     author: article.authorName,
     looprail: {
       id: article.slug,
       source: article.source,
+      sourceActionIntentId: article.sourceActionIntentId,
+      idempotencyKey: article.idempotencyKey,
       status,
       contentFormat: article.contentFormat,
       primaryKeyword: article.primaryKeyword,
@@ -831,8 +1271,60 @@ function buildFrontmatter(
       contentAngle: article.contentAngle,
       qualityEvaluation: article.qualityEvaluation,
       externalArticleId: article.externalArticleId,
+      images: article.images,
+      assets: article.assets,
     },
   }) as MatterData;
+}
+
+function buildStoredArticle(
+  article: NormalizedLooprailArticle,
+  status: LooprailArticleStatus,
+  now: Date,
+  existingArticle?: StoredLooprailArticle,
+): StoredLooprailArticle {
+  const today = formatDate(now);
+  const description =
+    article.excerpt ??
+    article.metaDescription ??
+    existingArticle?.description ??
+    article.title;
+
+  return compactObject({
+    schemaVersion: 1,
+    id: article.slug,
+    slug: article.slug,
+    status,
+    published: status === "published",
+    title: article.title,
+    description,
+    metaDescription: article.metaDescription,
+    date: existingArticle?.date ?? today,
+    updatedAt: status === "published" ? today : existingArticle?.updatedAt,
+    category: existingArticle?.category ?? deriveCategory(article),
+    tags: deriveTags(article),
+    featuredImage: article.featuredImage,
+    featuredImageAlt: article.featuredImageAlt,
+    author: article.authorName,
+    content: `${article.content.trim()}\n`,
+    contentFormat: article.contentFormat,
+    looprail: {
+      id: article.slug,
+      source: article.source,
+      sourceActionIntentId: article.sourceActionIntentId,
+      idempotencyKey: article.idempotencyKey,
+      status,
+      contentFormat: article.contentFormat,
+      primaryKeyword: article.primaryKeyword,
+      secondaryKeywords: article.secondaryKeywords,
+      searchIntent: article.searchIntent,
+      contentAngle: article.contentAngle,
+      qualityEvaluation: article.qualityEvaluation,
+      externalArticleId: article.externalArticleId,
+      images: article.images,
+      assets: article.assets,
+    },
+  }) as StoredLooprailArticle;
 }
 
 export function getLooprailPublicBaseUrl(
@@ -862,12 +1354,74 @@ function buildLooprailDraftUrl(slug: string): string | undefined {
   return `https://github.com/${repository}/blob/${branch}/${articleRepositoryPathForSlug(slug)}`;
 }
 
-export async function persistLooprailArticle(
-  payload: unknown,
+function resultForArticle(input: {
+  article: NormalizedLooprailArticle | StoredLooprailArticle;
+  status: LooprailArticleStatus;
+  storage: LooprailArticleResult["storage"];
+  baseUrl: string;
+  draftUrl?: string;
+}): LooprailArticleResult {
+  const publicUrl = buildLooprailArticleUrl(input.article.slug, input.baseUrl);
+
+  if (input.status === "published") {
+    return {
+      id: input.article.slug,
+      slug: input.article.slug,
+      status: input.status,
+      storage: input.storage,
+      rendering_status: "public",
+      visibility: "public",
+      url: publicUrl,
+      public_url: publicUrl,
+    };
+  }
+
+  return {
+    id: input.article.slug,
+    slug: input.article.slug,
+    status: input.status,
+    storage: input.storage,
+    rendering_status: "stored",
+    visibility: "draft",
+    ...(input.draftUrl ? { url: input.draftUrl, draft_url: input.draftUrl } : {}),
+  };
+}
+
+async function persistLooprailRuntimeArticle(
+  article: NormalizedLooprailArticle,
   status: LooprailArticleStatus,
-  options: PersistLooprailArticleOptions = {},
+  options: PersistLooprailArticleOptions,
 ): Promise<LooprailArticleResult> {
-  const article = validateLooprailArticle(payload, status);
+  const store = createLooprailRuntimeArticleStore(options);
+  const now = options.now ?? new Date();
+  const externalSlug = article.externalArticleId
+    ? normalizeSlug(article.externalArticleId)
+    : undefined;
+  const existingArticle =
+    (externalSlug && externalSlug !== article.slug
+      ? await store.read(externalSlug)
+      : undefined) ?? (await store.read(article.slug));
+  const storedArticle = buildStoredArticle(article, status, now, existingArticle);
+
+  await store.write(storedArticle);
+
+  if (externalSlug && externalSlug !== article.slug) {
+    await store.delete(externalSlug);
+  }
+
+  return resultForArticle({
+    article: storedArticle,
+    status,
+    storage: store.kind,
+    baseUrl: options.baseUrl ?? getLooprailPublicBaseUrl(),
+  });
+}
+
+async function persistLooprailMdxArticle(
+  article: NormalizedLooprailArticle,
+  status: LooprailArticleStatus,
+  options: PersistLooprailArticleOptions,
+): Promise<LooprailArticleResult> {
   const storage = createLooprailArticleStorage(options);
   const now = options.now ?? new Date();
   const externalSlug = article.externalArticleId
@@ -899,20 +1453,53 @@ export async function persistLooprailArticle(
     );
   }
 
-  const publicUrl = buildLooprailArticleUrl(
-    article.slug,
-    options.baseUrl ?? getLooprailPublicBaseUrl(),
-  );
-  const draftUrl = status === "draft" ? buildLooprailDraftUrl(article.slug) : undefined;
-
-  return {
-    id: article.slug,
-    slug: article.slug,
+  return resultForArticle({
+    article,
     status,
-    url: status === "published" ? publicUrl : draftUrl ?? publicUrl,
-    public_url: publicUrl,
-    ...(draftUrl ? { draft_url: draftUrl } : {}),
-  };
+    storage: storage.kind,
+    baseUrl: options.baseUrl ?? getLooprailPublicBaseUrl(),
+    draftUrl: status === "draft" ? buildLooprailDraftUrl(article.slug) : undefined,
+  });
+}
+
+export async function persistLooprailArticle(
+  payload: unknown,
+  status: LooprailArticleStatus,
+  options: PersistLooprailArticleOptions = {},
+): Promise<LooprailArticleResult> {
+  const article = validateLooprailArticle(payload, status);
+  if (shouldPersistLegacyMdx(options)) {
+    return persistLooprailMdxArticle(article, status, options);
+  }
+  return persistLooprailRuntimeArticle(article, status, options);
+}
+
+export async function readLooprailStoredArticles(
+  options: PersistLooprailArticleOptions = {},
+): Promise<StoredLooprailArticle[]> {
+  if (!canReadRuntimeArticleStore(options)) {
+    return [];
+  }
+
+  const store = createLooprailRuntimeArticleStore(options);
+  return store.readAll();
+}
+
+export async function readLooprailStoredArticleBySlug(
+  slug: string,
+  options: PersistLooprailArticleOptions = {},
+): Promise<StoredLooprailArticle | undefined> {
+  if (!canReadRuntimeArticleStore(options)) {
+    return undefined;
+  }
+
+  const normalizedSlug = normalizeSlug(slug);
+  if (!normalizedSlug) {
+    return undefined;
+  }
+
+  const store = createLooprailRuntimeArticleStore(options);
+  return store.read(normalizedSlug);
 }
 
 export function looprailErrorResponse(error: unknown): Response {

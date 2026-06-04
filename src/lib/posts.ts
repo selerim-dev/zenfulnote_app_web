@@ -2,6 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
 import { cache } from "react";
+import {
+  readLooprailStoredArticles,
+  type StoredLooprailArticle,
+} from "@/lib/looprail-cms";
 
 export type BlogPostMeta = {
   slug: string;
@@ -93,20 +97,53 @@ function normalizePost(fileName: string): BlogPost {
   };
 }
 
-export const getAllPosts = cache(() => {
+function normalizeStoredPost(article: StoredLooprailArticle): BlogPost {
+  return {
+    slug: article.slug,
+    title: article.title,
+    description: article.description,
+    date: article.date,
+    updatedAt: article.updatedAt,
+    category: article.category,
+    tags: article.tags,
+    featuredImage: article.featuredImage,
+    featuredImageAlt: article.featuredImageAlt,
+    published: article.published,
+    author: article.author,
+    content: article.content,
+    readingTime: readTime(article.content),
+  };
+}
+
+function getStaticPosts() {
   if (!fs.existsSync(postsDirectory)) {
     return [];
   }
 
-  const posts = fs
+  return fs
     .readdirSync(postsDirectory)
     .filter((fileName) => fileName.endsWith(".mdx"))
     .map(normalizePost)
-    .filter((post) => post.published)
-    .sort(
-      (first, second) =>
-        new Date(second.date).getTime() - new Date(first.date).getTime(),
-    );
+    .filter((post) => post.published);
+}
+
+export const getAllPosts = cache(async () => {
+  const postsBySlug = new Map<string, BlogPost>();
+  for (const post of getStaticPosts()) {
+    postsBySlug.set(post.slug, post);
+  }
+
+  const runtimePosts = (await readLooprailStoredArticles())
+    .filter((article) => article.published)
+    .map(normalizeStoredPost);
+  for (const post of runtimePosts) {
+    postsBySlug.set(post.slug, post);
+  }
+
+  const posts = Array.from(postsBySlug.values()).sort(
+    (first, second) =>
+      new Date(second.date).getTime() - new Date(first.date).getTime(),
+  );
 
   const slugs = new Set<string>();
   for (const post of posts) {
@@ -120,10 +157,12 @@ export const getAllPosts = cache(() => {
   return posts;
 });
 
-export const getPostBySlug = cache((slug: string) => {
-  return getAllPosts().find((post) => post.slug === slug);
+export const getPostBySlug = cache(async (slug: string) => {
+  return (await getAllPosts()).find((post) => post.slug === slug);
 });
 
-export function getAllCategories() {
-  return Array.from(new Set(getAllPosts().map((post) => post.category))).sort();
+export async function getAllCategories() {
+  return Array.from(
+    new Set((await getAllPosts()).map((post) => post.category)),
+  ).sort();
 }

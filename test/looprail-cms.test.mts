@@ -5,6 +5,8 @@ import path from "node:path";
 import test from "node:test";
 import matter from "gray-matter";
 import {
+  BLOB_READ_WRITE_TOKEN_ENV,
+  BLOB_STORE_ID_ENV,
   LOOPRAIL_API_KEY_ENV,
   LOOPRAIL_GITHUB_REPO_ENV,
   LOOPRAIL_GITHUB_TOKEN_ENV,
@@ -12,6 +14,7 @@ import {
   LooprailValidationError,
   LooprailStorageError,
   persistLooprailArticle,
+  readLooprailStoredArticles,
   validateLooprailApiKey,
   validateLooprailArticle,
 } from "../src/lib/looprail-cms.ts";
@@ -118,8 +121,9 @@ test("writes an unpublished draft MDX file", async (t) => {
     id: "article-title",
     slug: "article-title",
     status: "draft",
-    url: "https://example.com/blog/article-title",
-    public_url: "https://example.com/blog/article-title",
+    storage: "filesystem",
+    rendering_status: "stored",
+    visibility: "draft",
   });
 
   const raw = await readFile(path.join(contentDirectory, "article-title.mdx"), "utf8");
@@ -135,18 +139,78 @@ test("writes an unpublished draft MDX file", async (t) => {
   assert.match(parsed.content, /Markdown article body/);
 });
 
+test("writes runtime articles without touching MDX content", async (t) => {
+  const runtimeDirectory = await createTempContentDir();
+  t.after(() => rm(runtimeDirectory, { recursive: true, force: true }));
+
+  const draft = await persistLooprailArticle(sampleArticle, "draft", {
+    baseUrl: "https://example.com",
+    runtimeDirectory,
+    now: new Date("2026-06-02T12:00:00Z"),
+  });
+
+  assert.deepEqual(draft, {
+    id: "article-title",
+    slug: "article-title",
+    status: "draft",
+    storage: "filesystem",
+    rendering_status: "stored",
+    visibility: "draft",
+  });
+
+  const published = await persistLooprailArticle(
+    {
+      ...sampleArticle,
+      title: "Updated article title",
+      status: "published",
+      external_article_id: draft.id,
+    },
+    "published",
+    {
+      baseUrl: "https://example.com",
+      runtimeDirectory,
+      now: new Date("2026-06-03T12:00:00Z"),
+    },
+  );
+
+  assert.deepEqual(published, {
+    id: "article-title",
+    slug: "article-title",
+    status: "published",
+    storage: "filesystem",
+    rendering_status: "public",
+    visibility: "public",
+    url: "https://example.com/blog/article-title",
+    public_url: "https://example.com/blog/article-title",
+  });
+
+  const articles = await readLooprailStoredArticles({ runtimeDirectory });
+  assert.equal(articles.length, 1);
+  assert.equal(articles[0].title, "Updated article title");
+  assert.equal(articles[0].date, "2026-06-02");
+  assert.equal(articles[0].updatedAt, "2026-06-03");
+  assert.equal(articles[0].published, true);
+  assert.match(articles[0].content, /Markdown article body/);
+});
+
 test("requires durable storage configuration on Vercel", async (t) => {
   const previousVercel = process.env.VERCEL;
   const previousStorageMode = process.env[LOOPRAIL_STORAGE_MODE_ENV];
   const previousGithubToken = process.env[LOOPRAIL_GITHUB_TOKEN_ENV];
   const previousGithubRepo = process.env[LOOPRAIL_GITHUB_REPO_ENV];
   const previousGenericGithubToken = process.env.GITHUB_TOKEN;
+  const previousBlobToken = process.env[BLOB_READ_WRITE_TOKEN_ENV];
+  const previousBlobStoreId = process.env[BLOB_STORE_ID_ENV];
+  const previousOidcToken = process.env.VERCEL_OIDC_TOKEN;
   t.after(() => {
     restoreEnv("VERCEL", previousVercel);
     restoreEnv(LOOPRAIL_STORAGE_MODE_ENV, previousStorageMode);
     restoreEnv(LOOPRAIL_GITHUB_TOKEN_ENV, previousGithubToken);
     restoreEnv(LOOPRAIL_GITHUB_REPO_ENV, previousGithubRepo);
     restoreEnv("GITHUB_TOKEN", previousGenericGithubToken);
+    restoreEnv(BLOB_READ_WRITE_TOKEN_ENV, previousBlobToken);
+    restoreEnv(BLOB_STORE_ID_ENV, previousBlobStoreId);
+    restoreEnv("VERCEL_OIDC_TOKEN", previousOidcToken);
   });
 
   process.env.VERCEL = "1";
@@ -154,6 +218,9 @@ test("requires durable storage configuration on Vercel", async (t) => {
   delete process.env[LOOPRAIL_GITHUB_TOKEN_ENV];
   delete process.env[LOOPRAIL_GITHUB_REPO_ENV];
   delete process.env.GITHUB_TOKEN;
+  delete process.env[BLOB_READ_WRITE_TOKEN_ENV];
+  delete process.env[BLOB_STORE_ID_ENV];
+  delete process.env.VERCEL_OIDC_TOKEN;
 
   await assert.rejects(
     () =>
@@ -162,7 +229,7 @@ test("requires durable storage configuration on Vercel", async (t) => {
       }),
     (error) => {
       assert.equal(error instanceof LooprailStorageError, true);
-      assert.match(error.message, /storage is not configured/i);
+      assert.match(error.message, /runtime storage is not configured/i);
       return true;
     },
   );

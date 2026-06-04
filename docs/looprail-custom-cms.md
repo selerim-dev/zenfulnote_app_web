@@ -1,10 +1,16 @@
 # Looprail Custom CMS API
 
 This site exposes a small server API for Looprail to create blog drafts and
-publish approved articles. Locally, the API writes MDX files into
-`content/blog`. In Vercel production, the deployed filesystem is read-only, so
-the API commits MDX files back to the GitHub repository. Vercel then redeploys
-from the committed content.
+publish approved articles. Looprail sends structured article JSON to this
+site, and this site owns how the article is stored and rendered.
+
+In production, published articles are stored in a private Vercel Blob store and
+served by the blog pages at request time. This means a publish does not commit
+to GitHub and does not require a Vercel redeploy.
+
+In local development, runtime article JSON is written under `.looprail/`.
+Existing MDX files under `content/blog` remain supported and are merged with
+runtime articles for the public blog.
 
 ## Environment
 
@@ -19,22 +25,21 @@ Optional settings:
 ```bash
 LOOPRAIL_CMS_AUTH_HEADER="x-looprail-api-key"
 LOOPRAIL_CMS_PUBLIC_BASE_URL="https://www.zenfulnote.app"
-LOOPRAIL_CMS_STORAGE_MODE="github"
-LOOPRAIL_CMS_GITHUB_TOKEN="github-fine-grained-token"
-LOOPRAIL_CMS_GITHUB_REPO="selerim-dev/zenfulnote_app_web"
-LOOPRAIL_CMS_GITHUB_BRANCH="main"
-LOOPRAIL_CMS_GITHUB_COMMITTER_NAME="Looprail CMS"
-LOOPRAIL_CMS_GITHUB_COMMITTER_EMAIL="looprail-cms@users.noreply.github.com"
+LOOPRAIL_CMS_STORAGE_MODE="blob"
+BLOB_READ_WRITE_TOKEN="vercel-blob-read-write-token"
 ```
 
 `LOOPRAIL_CMS_AUTH_HEADER` defaults to `x-looprail-api-key`.
 `LOOPRAIL_CMS_PUBLIC_BASE_URL` controls the `url` returned in draft and publish
 responses. If it is not set, the site URL from `src/config/site.ts` is used.
 
-For Vercel, configure `LOOPRAIL_CMS_GITHUB_TOKEN` with a fine-grained GitHub
-token that has Contents read/write access to this repository. Without it, the
-API will return a setup error because Vercel cannot persist runtime writes to
-`content/blog`.
+For Vercel production, connect a private Vercel Blob store to this project so
+`BLOB_READ_WRITE_TOKEN` is available at runtime. The API returns a setup error
+when production storage is missing.
+
+`LOOPRAIL_CMS_STORAGE_MODE=github` is still supported as a legacy fallback, but
+it commits MDX to GitHub and depends on a redeploy before the public page
+updates. Do not use it for normal Looprail publishing.
 
 ## Connector Values
 
@@ -59,7 +64,8 @@ Returns JSON when the API key is valid.
 
 `POST /api/looprail/articles`
 
-Creates an unpublished draft from Looprail article JSON.
+Creates an unpublished draft from Looprail article JSON. Drafts are stored but
+are not returned from the public blog list and do not get a public URL.
 
 `POST /api/looprail/articles/publish`
 
@@ -80,8 +86,23 @@ Draft and publish responses return:
   "id": "article-title",
   "slug": "article-title",
   "status": "draft",
-  "url": "https://www.zenfulnote.app/blog/article-title"
+  "storage": "vercel_blob",
+  "rendering_status": "stored",
+  "visibility": "draft"
 }
 ```
 
-The publish endpoint returns the same shape with `"status": "published"`.
+The publish endpoint returns the public blog URL immediately:
+
+```json
+{
+  "id": "article-title",
+  "slug": "article-title",
+  "status": "published",
+  "storage": "vercel_blob",
+  "rendering_status": "public",
+  "visibility": "public",
+  "url": "https://www.zenfulnote.app/blog/article-title",
+  "public_url": "https://www.zenfulnote.app/blog/article-title"
+}
+```
