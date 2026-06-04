@@ -27,6 +27,8 @@ LOOPRAIL_CMS_AUTH_HEADER="x-looprail-api-key"
 LOOPRAIL_CMS_PUBLIC_BASE_URL="https://www.zenfulnote.app"
 LOOPRAIL_CMS_STORAGE_MODE="blob"
 BLOB_READ_WRITE_TOKEN="vercel-blob-read-write-token"
+ZENFULNOTE_ADMIN_PASSWORD="strong-admin-password"
+ZENFULNOTE_ADMIN_SESSION_SECRET="random-session-signing-secret"
 ```
 
 `LOOPRAIL_CMS_AUTH_HEADER` defaults to `x-looprail-api-key`.
@@ -40,6 +42,18 @@ when production storage is missing.
 `LOOPRAIL_CMS_STORAGE_MODE=github` is still supported as a legacy fallback, but
 it commits MDX to GitHub and depends on a redeploy before the public page
 updates. Do not use it for normal Looprail publishing.
+
+## Blog Admin
+
+`/admin` is a password-only editor for Looprail runtime articles. It does not
+use user accounts. Set `ZENFULNOTE_ADMIN_PASSWORD` and
+`ZENFULNOTE_ADMIN_SESSION_SECRET` in the deployment environment before using it.
+
+The admin editor can update title, description, metadata, category, tags,
+featured image, body markdown, published status, and promoted status. Deleting
+an article removes it from the runtime store. Promoted published articles sort
+to the top of the public blog and become the featured article before ordinary
+date ordering.
 
 ## Connector Values
 

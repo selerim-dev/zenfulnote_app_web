@@ -95,6 +95,7 @@ export type StoredLooprailArticle = {
   slug: string;
   status: LooprailArticleStatus;
   published: boolean;
+  promoted?: boolean;
   title: string;
   description: string;
   metaDescription?: string;
@@ -142,6 +143,22 @@ export type PersistLooprailArticleOptions = {
   contentDirectory?: string;
   runtimeDirectory?: string;
   now?: Date;
+};
+
+export type LooprailStoredArticleUpdate = {
+  title?: string;
+  description?: string;
+  metaDescription?: string;
+  category?: string;
+  tags?: string[];
+  featuredImage?: string;
+  featuredImageAlt?: string;
+  author?: string;
+  content?: string;
+  contentFormat?: "markdown" | "html";
+  published?: boolean;
+  promoted?: boolean;
+  date?: string;
 };
 
 export type LooprailAuthResult =
@@ -282,6 +299,49 @@ function normalizeSlug(value: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function trimmedOptional(
+  value: string | undefined,
+  maxLength = MAX_SHORT_TEXT_LENGTH,
+): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = normalizeText(value);
+  if (!normalized) return undefined;
+  return normalized.slice(0, maxLength);
+}
+
+function trimmedOr(
+  value: string | undefined,
+  fallback: string,
+  maxLength = MAX_SHORT_TEXT_LENGTH,
+): string {
+  return trimmedOptional(value, maxLength) ?? fallback;
+}
+
+function uniqueStringArray(
+  values: string[],
+  maxItems: number,
+  maxLength = MAX_SHORT_TEXT_LENGTH,
+) {
+  return Array.from(
+    new Set(
+      values
+        .map((item) => trimmedOptional(item, maxLength))
+        .filter((item): item is string => Boolean(item)),
+    ),
+  ).slice(0, maxItems);
+}
+
+function validDateOr(value: string | undefined, fallback: string) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return fallback;
+  }
+  return value;
+}
+
+function hasOwn<T extends object>(value: T, key: PropertyKey) {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }
 
 function optionalJsonObject(
@@ -908,6 +968,7 @@ type StoredLooprailArticleIndexEntry = {
   title: string;
   status: LooprailArticleStatus;
   published: boolean;
+  promoted?: boolean;
   date: string;
   updatedAt?: string;
 };
@@ -1004,6 +1065,7 @@ function indexEntryFromArticle(
     title: article.title,
     status: article.status,
     published: article.published,
+    promoted: article.promoted,
     date: article.date,
     updatedAt: article.updatedAt,
   }) as StoredLooprailArticleIndexEntry;
@@ -1011,9 +1073,15 @@ function indexEntryFromArticle(
 
 function sortRuntimeIndex(entries: StoredLooprailArticleIndexEntry[]) {
   return entries.sort(
-    (first, second) =>
-      new Date(second.updatedAt ?? second.date).getTime() -
-      new Date(first.updatedAt ?? first.date).getTime(),
+    (first, second) => {
+      if (Boolean(first.promoted) !== Boolean(second.promoted)) {
+        return first.promoted ? -1 : 1;
+      }
+      return (
+        new Date(second.updatedAt ?? second.date).getTime() -
+        new Date(first.updatedAt ?? first.date).getTime()
+      );
+    },
   );
 }
 
@@ -1296,6 +1364,7 @@ function buildStoredArticle(
     slug: article.slug,
     status,
     published: status === "published",
+    promoted: existingArticle?.promoted,
     title: article.title,
     description,
     metaDescription: article.metaDescription,
@@ -1500,6 +1569,86 @@ export async function readLooprailStoredArticleBySlug(
 
   const store = createLooprailRuntimeArticleStore(options);
   return store.read(normalizedSlug);
+}
+
+export async function updateLooprailStoredArticle(
+  slug: string,
+  update: LooprailStoredArticleUpdate,
+  options: PersistLooprailArticleOptions = {},
+): Promise<StoredLooprailArticle> {
+  if (!canReadRuntimeArticleStore(options)) {
+    throw new LooprailStorageError("Looprail CMS runtime storage is not available.", 503);
+  }
+
+  const normalizedSlug = normalizeSlug(slug);
+  if (!normalizedSlug) {
+    throw new LooprailValidationError(["slug must contain at least one letter or number"]);
+  }
+
+  const store = createLooprailRuntimeArticleStore(options);
+  const current = await store.read(normalizedSlug);
+  if (!current) {
+    throw new LooprailValidationError(["article was not found"]);
+  }
+
+  const nextPublished =
+    typeof update.published === "boolean" ? update.published : current.published;
+  const nextStatus: LooprailArticleStatus = nextPublished ? "published" : "draft";
+  const nextContentFormat = update.contentFormat ?? current.contentFormat;
+  const next: StoredLooprailArticle = compactObject({
+    ...current,
+    status: nextStatus,
+    published: nextPublished,
+    promoted: Boolean(update.promoted ?? current.promoted),
+    title: trimmedOr(update.title, current.title, MAX_TITLE_LENGTH),
+    description: trimmedOr(update.description, current.description, MAX_SHORT_TEXT_LENGTH),
+    metaDescription: hasOwn(update, "metaDescription")
+      ? trimmedOptional(update.metaDescription, MAX_SHORT_TEXT_LENGTH)
+      : current.metaDescription,
+    date: validDateOr(update.date, current.date),
+    updatedAt: formatDate(options.now ?? new Date()),
+    category: trimmedOr(update.category, current.category, MAX_SHORT_TEXT_LENGTH),
+    tags: Array.isArray(update.tags)
+      ? uniqueStringArray(update.tags, 24, MAX_SHORT_TEXT_LENGTH)
+      : current.tags,
+    featuredImage: hasOwn(update, "featuredImage")
+      ? trimmedOptional(update.featuredImage, MAX_URL_LENGTH)
+      : current.featuredImage,
+    featuredImageAlt: hasOwn(update, "featuredImageAlt")
+      ? trimmedOptional(update.featuredImageAlt, MAX_SHORT_TEXT_LENGTH)
+      : current.featuredImageAlt,
+    author: trimmedOr(update.author, current.author, MAX_SHORT_TEXT_LENGTH),
+    content:
+      typeof update.content === "string" && update.content.trim()
+        ? `${update.content.trim()}\n`
+        : current.content,
+    contentFormat: nextContentFormat,
+    looprail: {
+      ...current.looprail,
+      status: nextStatus,
+      contentFormat: nextContentFormat,
+    },
+  }) as StoredLooprailArticle;
+
+  await store.write(next);
+  return next;
+}
+
+export async function deleteLooprailStoredArticle(
+  slug: string,
+  options: PersistLooprailArticleOptions = {},
+): Promise<void> {
+  if (!canReadRuntimeArticleStore(options)) {
+    throw new LooprailStorageError("Looprail CMS runtime storage is not available.", 503);
+  }
+
+  const normalizedSlug = normalizeSlug(slug);
+  if (!normalizedSlug) {
+    throw new LooprailValidationError(["slug must contain at least one letter or number"]);
+  }
+
+  const store = createLooprailRuntimeArticleStore(options);
+  await store.delete(normalizedSlug);
 }
 
 export function looprailErrorResponse(error: unknown): Response {

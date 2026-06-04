@@ -9,6 +9,7 @@ const footerLinks = [
   { label: "Download", href: "/download" },
   { label: "Privacy Policy", href: "/privacy-policy" },
   { label: "Terms", href: "/terms-and-conditions" },
+  { label: "Admin", href: "/admin" },
 ];
 
 export function SiteFooter() {

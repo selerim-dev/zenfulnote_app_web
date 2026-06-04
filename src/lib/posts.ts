@@ -15,6 +15,7 @@ export type BlogPostMeta = {
   updatedAt?: string;
   category: string;
   tags: string[];
+  promoted?: boolean;
   featuredImage?: string;
   featuredImageAlt?: string;
   published: boolean;
@@ -84,6 +85,7 @@ function normalizePost(fileName: string): BlogPost {
         : undefined,
     category: data.category,
     tags: data.tags,
+    promoted: data.promoted === true,
     featuredImage:
       typeof data.featuredImage === "string" ? data.featuredImage : undefined,
     featuredImageAlt:
@@ -106,6 +108,7 @@ function normalizeStoredPost(article: StoredLooprailArticle): BlogPost {
     updatedAt: article.updatedAt,
     category: article.category,
     tags: article.tags,
+    promoted: article.promoted,
     featuredImage: article.featuredImage,
     featuredImageAlt: article.featuredImageAlt,
     published: article.published,
@@ -141,8 +144,12 @@ export const getAllPosts = cache(async () => {
   }
 
   const posts = Array.from(postsBySlug.values()).sort(
-    (first, second) =>
-      new Date(second.date).getTime() - new Date(first.date).getTime(),
+    (first, second) => {
+      if (Boolean(first.promoted) !== Boolean(second.promoted)) {
+        return first.promoted ? -1 : 1;
+      }
+      return new Date(second.date).getTime() - new Date(first.date).getTime();
+    },
   );
 
   const slugs = new Set<string>();

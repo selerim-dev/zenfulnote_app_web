@@ -13,8 +13,11 @@ import {
   LOOPRAIL_STORAGE_MODE_ENV,
   LooprailValidationError,
   LooprailStorageError,
+  deleteLooprailStoredArticle,
   persistLooprailArticle,
+  readLooprailStoredArticleBySlug,
   readLooprailStoredArticles,
+  updateLooprailStoredArticle,
   validateLooprailApiKey,
   validateLooprailArticle,
 } from "../src/lib/looprail-cms.ts";
@@ -208,6 +211,59 @@ test("writes runtime articles without touching MDX content", async (t) => {
   assert.equal(articles[0].updatedAt, "2026-06-03");
   assert.equal(articles[0].published, true);
   assert.match(articles[0].content, /Markdown article body/);
+});
+
+test("edits, promotes, and deletes runtime articles", async (t) => {
+  const runtimeDirectory = await createTempContentDir();
+  t.after(() => rm(runtimeDirectory, { recursive: true, force: true }));
+
+  await persistLooprailArticle(
+    { ...sampleArticle, status: "published" },
+    "published",
+    {
+    baseUrl: "https://example.com",
+    runtimeDirectory,
+    now: new Date("2026-06-02T12:00:00Z"),
+    },
+  );
+
+  const updated = await updateLooprailStoredArticle(
+    "article-title",
+    {
+      title: "Edited article title",
+      description: "Edited description",
+      category: "Promoted",
+      tags: ["edited", "article"],
+      content: "## Edited\n\nUpdated body.",
+      promoted: true,
+      published: true,
+    },
+    {
+      runtimeDirectory,
+      now: new Date("2026-06-04T12:00:00Z"),
+    },
+  );
+
+  assert.equal(updated.title, "Edited article title");
+  assert.equal(updated.description, "Edited description");
+  assert.equal(updated.category, "Promoted");
+  assert.equal(updated.promoted, true);
+  assert.equal(updated.published, true);
+  assert.equal(updated.status, "published");
+  assert.equal(updated.updatedAt, "2026-06-04");
+  assert.match(updated.content, /Updated body/);
+
+  const stored = await readLooprailStoredArticleBySlug("article-title", {
+    runtimeDirectory,
+  });
+  assert.equal(stored?.promoted, true);
+
+  await deleteLooprailStoredArticle("article-title", { runtimeDirectory });
+  assert.equal(
+    await readLooprailStoredArticleBySlug("article-title", { runtimeDirectory }),
+    undefined,
+  );
+  assert.equal((await readLooprailStoredArticles({ runtimeDirectory })).length, 0);
 });
 
 test("requires durable storage configuration on Vercel", async (t) => {
