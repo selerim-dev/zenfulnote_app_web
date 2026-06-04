@@ -119,6 +119,7 @@ test("writes an unpublished draft MDX file", async (t) => {
     slug: "article-title",
     status: "draft",
     url: "https://example.com/blog/article-title",
+    public_url: "https://example.com/blog/article-title",
   });
 
   const raw = await readFile(path.join(contentDirectory, "article-title.mdx"), "utf8");

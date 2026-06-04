@@ -70,6 +70,8 @@ export type LooprailArticleResult = {
   slug: string;
   status: LooprailArticleStatus;
   url: string;
+  public_url: string;
+  draft_url?: string;
 };
 
 export type PersistLooprailArticleOptions = {
@@ -844,6 +846,22 @@ export function buildLooprailArticleUrl(slug: string, baseUrl: string): string {
   return new URL(`/blog/${slug}`, baseUrl).toString();
 }
 
+function buildLooprailDraftUrl(slug: string): string | undefined {
+  const repository =
+    process.env[LOOPRAIL_GITHUB_REPO_ENV]?.trim() ||
+    githubRepositoryFromVercelEnv(process.env);
+  const branch =
+    process.env[LOOPRAIL_GITHUB_BRANCH_ENV]?.trim() ||
+    process.env.VERCEL_GIT_COMMIT_REF?.trim() ||
+    "main";
+
+  if (!repository) {
+    return undefined;
+  }
+
+  return `https://github.com/${repository}/blob/${branch}/${articleRepositoryPathForSlug(slug)}`;
+}
+
 export async function persistLooprailArticle(
   payload: unknown,
   status: LooprailArticleStatus,
@@ -881,14 +899,19 @@ export async function persistLooprailArticle(
     );
   }
 
+  const publicUrl = buildLooprailArticleUrl(
+    article.slug,
+    options.baseUrl ?? getLooprailPublicBaseUrl(),
+  );
+  const draftUrl = status === "draft" ? buildLooprailDraftUrl(article.slug) : undefined;
+
   return {
     id: article.slug,
     slug: article.slug,
     status,
-    url: buildLooprailArticleUrl(
-      article.slug,
-      options.baseUrl ?? getLooprailPublicBaseUrl(),
-    ),
+    url: status === "published" ? publicUrl : draftUrl ?? publicUrl,
+    public_url: publicUrl,
+    ...(draftUrl ? { draft_url: draftUrl } : {}),
   };
 }
 
