@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { BlogImage } from "@/components/blog-image";
 import type { BlogPost } from "@/lib/posts";
 
 type BlogCardProps = {
@@ -24,7 +25,7 @@ export function BlogCard({ post, priority = false }: BlogCardProps) {
             sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
             className="absolute inset-0 size-full object-cover opacity-40 transition duration-300 group-hover:scale-[1.02]"
           />
-          <Image
+          <BlogImage
             src={post.featuredImage}
             alt={post.featuredImageAlt ?? ""}
             fill

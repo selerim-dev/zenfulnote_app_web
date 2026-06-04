@@ -73,6 +73,12 @@ Publishes a new article or updates an existing published article from the same
 Looprail article JSON. Include `external_article_id` when publishing a draft
 created through the draft endpoint.
 
+Article JSON can include `featured_image`, `featured_image_alt`, `images`, and
+`assets`. ZenfulNote stores those fields with the runtime article. Local image
+paths continue through `next/image`; remote Looprail image URLs render directly
+so the blog can use client-provided images without adding a new image host to
+`next.config.ts`.
+
 All endpoints require this header:
 
 ```http

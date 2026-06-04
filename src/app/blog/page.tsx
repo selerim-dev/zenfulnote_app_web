@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { BlogImage } from "@/components/blog-image";
 import { BlogFilterGrid } from "@/components/blog-filter-grid";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
@@ -92,7 +93,7 @@ export default async function BlogPage() {
                     className="absolute inset-0 size-full object-cover opacity-40"
                     sizes="(min-width: 1024px) 46vw, 100vw"
                   />
-                  <Image
+                  <BlogImage
                     src={featured.featuredImage}
                     alt={featured.featuredImageAlt ?? ""}
                     fill

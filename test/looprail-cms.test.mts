@@ -26,6 +26,20 @@ const sampleArticle = {
   meta_description: "SEO meta description",
   body_markdown: "## Start\n\nMarkdown article body.",
   html: "",
+  featured_image: "https://cdn.example.com/zenfulnote-cover.png",
+  featured_image_alt: "ZenfulNote article cover",
+  images: [
+    {
+      url: "https://cdn.example.com/zenfulnote-cover.png",
+      role: "featured",
+    },
+  ],
+  assets: [
+    {
+      url: "https://cdn.example.com/zenfulnote-cover.png",
+      role: "featured",
+    },
+  ],
   primary_keyword: "keyword",
   secondary_keywords: ["related keyword"],
   search_intent: "informational",
@@ -48,13 +62,12 @@ test("validates the configured Looprail API key header", () => {
   const headers = new Headers({
     "x-looprail-api-key": "site-generated-secret",
   });
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    [LOOPRAIL_API_KEY_ENV]: "site-generated-secret",
+  };
 
-  assert.deepEqual(
-    validateLooprailApiKey(headers, {
-      [LOOPRAIL_API_KEY_ENV]: "site-generated-secret",
-    }),
-    { ok: true },
-  );
+  assert.deepEqual(validateLooprailApiKey(headers, env), { ok: true });
 });
 
 test("rejects requests when the Looprail API key is missing", () => {
@@ -70,6 +83,10 @@ test("validates and normalizes Looprail article payloads", () => {
   assert.equal(article.slug, "article-title");
   assert.equal(article.status, "draft");
   assert.equal(article.contentFormat, "markdown");
+  assert.equal(article.featuredImage, "https://cdn.example.com/zenfulnote-cover.png");
+  assert.equal(article.featuredImageAlt, "ZenfulNote article cover");
+  assert.equal(article.images?.length, 1);
+  assert.equal(article.assets?.length, 1);
   assert.deepEqual(article.secondaryKeywords, ["related keyword"]);
 });
 
@@ -98,7 +115,7 @@ test("rejects invalid status, arrays, and unsafe content", () => {
         "draft",
       ),
     (error) => {
-      assert.equal(error instanceof LooprailValidationError, true);
+      if (!(error instanceof LooprailValidationError)) return false;
       assert.match(error.issues.join("\n"), /status must be "draft"/);
       assert.match(error.issues.join("\n"), /secondary_keywords\[1]/);
       assert.match(error.issues.join("\n"), /unsafe HTML tags/);
@@ -228,7 +245,7 @@ test("requires durable storage configuration on Vercel", async (t) => {
         baseUrl: "https://example.com",
       }),
     (error) => {
-      assert.equal(error instanceof LooprailStorageError, true);
+      if (!(error instanceof LooprailStorageError)) return false;
       assert.match(error.message, /runtime storage is not configured/i);
       return true;
     },

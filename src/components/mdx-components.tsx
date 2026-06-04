@@ -1,5 +1,5 @@
-import Image from "next/image";
 import type { MDXComponents } from "mdx/types";
+import { BlogImage } from "@/components/blog-image";
 
 function Callout({ children }: { children: React.ReactNode }) {
   return (
@@ -17,7 +17,7 @@ export const mdxComponents: MDXComponents = {
     }
 
     return (
-      <Image
+      <BlogImage
         src={src}
         alt={alt ?? ""}
         width={1200}
