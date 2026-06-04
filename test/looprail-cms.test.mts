@@ -6,7 +6,11 @@ import test from "node:test";
 import matter from "gray-matter";
 import {
   LOOPRAIL_API_KEY_ENV,
+  LOOPRAIL_GITHUB_REPO_ENV,
+  LOOPRAIL_GITHUB_TOKEN_ENV,
+  LOOPRAIL_STORAGE_MODE_ENV,
   LooprailValidationError,
+  LooprailStorageError,
   persistLooprailArticle,
   validateLooprailApiKey,
   validateLooprailArticle,
@@ -66,6 +70,18 @@ test("validates and normalizes Looprail article payloads", () => {
   assert.deepEqual(article.secondaryKeywords, ["related keyword"]);
 });
 
+test("accepts Looprail drafted status as a draft alias", () => {
+  const article = validateLooprailArticle(
+    {
+      ...sampleArticle,
+      status: "drafted",
+    },
+    "draft",
+  );
+
+  assert.equal(article.status, "draft");
+});
+
 test("rejects invalid status, arrays, and unsafe content", () => {
   assert.throws(
     () =>
@@ -118,6 +134,39 @@ test("writes an unpublished draft MDX file", async (t) => {
   assert.match(parsed.content, /Markdown article body/);
 });
 
+test("requires durable storage configuration on Vercel", async (t) => {
+  const previousVercel = process.env.VERCEL;
+  const previousStorageMode = process.env[LOOPRAIL_STORAGE_MODE_ENV];
+  const previousGithubToken = process.env[LOOPRAIL_GITHUB_TOKEN_ENV];
+  const previousGithubRepo = process.env[LOOPRAIL_GITHUB_REPO_ENV];
+  const previousGenericGithubToken = process.env.GITHUB_TOKEN;
+  t.after(() => {
+    restoreEnv("VERCEL", previousVercel);
+    restoreEnv(LOOPRAIL_STORAGE_MODE_ENV, previousStorageMode);
+    restoreEnv(LOOPRAIL_GITHUB_TOKEN_ENV, previousGithubToken);
+    restoreEnv(LOOPRAIL_GITHUB_REPO_ENV, previousGithubRepo);
+    restoreEnv("GITHUB_TOKEN", previousGenericGithubToken);
+  });
+
+  process.env.VERCEL = "1";
+  delete process.env[LOOPRAIL_STORAGE_MODE_ENV];
+  delete process.env[LOOPRAIL_GITHUB_TOKEN_ENV];
+  delete process.env[LOOPRAIL_GITHUB_REPO_ENV];
+  delete process.env.GITHUB_TOKEN;
+
+  await assert.rejects(
+    () =>
+      persistLooprailArticle(sampleArticle, "draft", {
+        baseUrl: "https://example.com",
+      }),
+    (error) => {
+      assert.equal(error instanceof LooprailStorageError, true);
+      assert.match(error.message, /storage is not configured/i);
+      return true;
+    },
+  );
+});
+
 test("publishes an existing draft and preserves its original date", async (t) => {
   const contentDirectory = await createTempContentDir();
   t.after(() => rm(contentDirectory, { recursive: true, force: true }));
@@ -151,3 +200,11 @@ test("publishes an existing draft and preserves its original date", async (t) =>
   assert.equal(parsed.data.updatedAt, "2026-06-03");
   assert.equal(parsed.data.published, true);
 });
+
+function restoreEnv(key: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[key];
+    return;
+  }
+  process.env[key] = value;
+}

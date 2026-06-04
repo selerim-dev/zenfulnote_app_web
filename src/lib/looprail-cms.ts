@@ -8,6 +8,14 @@ export const DEFAULT_LOOPRAIL_AUTH_HEADER = "x-looprail-api-key";
 export const LOOPRAIL_API_KEY_ENV = "LOOPRAIL_CMS_API_KEY";
 export const LOOPRAIL_AUTH_HEADER_ENV = "LOOPRAIL_CMS_AUTH_HEADER";
 export const LOOPRAIL_PUBLIC_BASE_URL_ENV = "LOOPRAIL_CMS_PUBLIC_BASE_URL";
+export const LOOPRAIL_STORAGE_MODE_ENV = "LOOPRAIL_CMS_STORAGE_MODE";
+export const LOOPRAIL_GITHUB_TOKEN_ENV = "LOOPRAIL_CMS_GITHUB_TOKEN";
+export const LOOPRAIL_GITHUB_REPO_ENV = "LOOPRAIL_CMS_GITHUB_REPO";
+export const LOOPRAIL_GITHUB_BRANCH_ENV = "LOOPRAIL_CMS_GITHUB_BRANCH";
+export const LOOPRAIL_GITHUB_COMMITTER_NAME_ENV =
+  "LOOPRAIL_CMS_GITHUB_COMMITTER_NAME";
+export const LOOPRAIL_GITHUB_COMMITTER_EMAIL_ENV =
+  "LOOPRAIL_CMS_GITHUB_COMMITTER_EMAIL";
 export const DEFAULT_LOOPRAIL_BASE_URL = "https://www.zenfulnote.app";
 
 const MAX_SLUG_LENGTH = 120;
@@ -15,6 +23,7 @@ const MAX_SHORT_TEXT_LENGTH = 500;
 const MAX_TITLE_LENGTH = 220;
 const MAX_BODY_LENGTH = 250_000;
 const POSTS_DIRECTORY = path.join(process.cwd(), "content", "blog");
+const POSTS_REPOSITORY_DIRECTORY = "content/blog";
 
 export type LooprailArticleStatus = "draft" | "published";
 
@@ -86,6 +95,16 @@ export class LooprailValidationError extends Error {
     super("Invalid Looprail article payload");
     this.name = "LooprailValidationError";
     this.issues = issues;
+  }
+}
+
+export class LooprailStorageError extends Error {
+  status: 500 | 503;
+
+  constructor(message: string, status: 500 | 503 = 500) {
+    super(message);
+    this.name = "LooprailStorageError";
+    this.status = status;
   }
 }
 
@@ -252,6 +271,10 @@ function readExpectedStatusIssue(
   const status = payload.status;
 
   if (status === undefined || status === null) {
+    return undefined;
+  }
+
+  if (expectedStatus === "draft" && status === "drafted") {
     return undefined;
   }
 
@@ -474,6 +497,285 @@ async function readExistingPost(filePath: string) {
   return matter(raw);
 }
 
+type LooprailArticleStorage = {
+  read(slug: string): Promise<ReturnType<typeof matter> | undefined>;
+  write(slug: string, content: string, message: string): Promise<void>;
+  delete(slug: string, message: string): Promise<void>;
+};
+
+function articleRepositoryPathForSlug(slug: string): string {
+  return `${POSTS_REPOSITORY_DIRECTORY}/${slug}.mdx`;
+}
+
+function createLooprailArticleStorage(
+  options: PersistLooprailArticleOptions,
+): LooprailArticleStorage {
+  if (options.contentDirectory) {
+    return createFilesystemArticleStorage(options.contentDirectory);
+  }
+
+  if (shouldUseGithubArticleStorage(process.env)) {
+    return createGithubArticleStorage(process.env);
+  }
+
+  if (process.env.VERCEL) {
+    throw new LooprailStorageError(
+      [
+        "Looprail CMS storage is not configured for Vercel.",
+        `Add ${LOOPRAIL_GITHUB_TOKEN_ENV} with repository Contents read/write access.`,
+        `${LOOPRAIL_GITHUB_REPO_ENV} is optional when Vercel Git metadata is available.`,
+      ].join(" "),
+      503,
+    );
+  }
+
+  return createFilesystemArticleStorage(POSTS_DIRECTORY);
+}
+
+function createFilesystemArticleStorage(contentDirectory: string): LooprailArticleStorage {
+  return {
+    async read(slug) {
+      return readExistingPost(articlePathForSlug(contentDirectory, slug));
+    },
+    async write(slug, content) {
+      try {
+        await mkdir(contentDirectory, { recursive: true });
+        await writeFile(articlePathForSlug(contentDirectory, slug), content, "utf8");
+      } catch (error) {
+        throw new LooprailStorageError(
+          storageErrorMessage("write the local blog draft", error),
+        );
+      }
+    },
+    async delete(slug) {
+      const targetPath = articlePathForSlug(contentDirectory, slug);
+      if (!fs.existsSync(targetPath)) return;
+      try {
+        await unlink(targetPath);
+      } catch (error) {
+        throw new LooprailStorageError(
+          storageErrorMessage("remove the previous local blog draft", error),
+        );
+      }
+    },
+  };
+}
+
+function shouldUseGithubArticleStorage(env: NodeJS.ProcessEnv): boolean {
+  const storageMode = env[LOOPRAIL_STORAGE_MODE_ENV]?.trim().toLowerCase();
+  return (
+    storageMode === "github" ||
+    Boolean(env[LOOPRAIL_GITHUB_TOKEN_ENV]?.trim()) ||
+    Boolean(env.GITHUB_TOKEN?.trim())
+  );
+}
+
+function createGithubArticleStorage(env: NodeJS.ProcessEnv): LooprailArticleStorage {
+  const token =
+    env[LOOPRAIL_GITHUB_TOKEN_ENV]?.trim() || env.GITHUB_TOKEN?.trim();
+  const repository =
+    env[LOOPRAIL_GITHUB_REPO_ENV]?.trim() ||
+    githubRepositoryFromVercelEnv(env);
+  const branch =
+    env[LOOPRAIL_GITHUB_BRANCH_ENV]?.trim() ||
+    env.VERCEL_GIT_COMMIT_REF?.trim() ||
+    "main";
+
+  if (!token || !repository) {
+    throw new LooprailStorageError(
+      [
+        "Looprail CMS GitHub storage is missing configuration.",
+        `Set ${LOOPRAIL_GITHUB_TOKEN_ENV} and ${LOOPRAIL_GITHUB_REPO_ENV}`,
+        "so drafts can be committed to the website repository.",
+      ].join(" "),
+      503,
+    );
+  }
+
+  const committerName =
+    env[LOOPRAIL_GITHUB_COMMITTER_NAME_ENV]?.trim() || "Looprail CMS";
+  const committerEmail =
+    env[LOOPRAIL_GITHUB_COMMITTER_EMAIL_ENV]?.trim() ||
+    "looprail-cms@users.noreply.github.com";
+
+  return {
+    async read(slug) {
+      const file = await readGithubContentFile({
+        repository,
+        branch,
+        token,
+        path: articleRepositoryPathForSlug(slug),
+      });
+      return file ? matter(file.content) : undefined;
+    },
+    async write(slug, content, message) {
+      await writeGithubContentFile({
+        repository,
+        branch,
+        token,
+        path: articleRepositoryPathForSlug(slug),
+        content,
+        message,
+        committerName,
+        committerEmail,
+      });
+    },
+    async delete(slug, message) {
+      await deleteGithubContentFile({
+        repository,
+        branch,
+        token,
+        path: articleRepositoryPathForSlug(slug),
+        message,
+        committerName,
+        committerEmail,
+      });
+    },
+  };
+}
+
+function githubRepositoryFromVercelEnv(env: NodeJS.ProcessEnv): string | undefined {
+  const owner = env.VERCEL_GIT_REPO_OWNER?.trim();
+  const slug = env.VERCEL_GIT_REPO_SLUG?.trim();
+  return owner && slug ? `${owner}/${slug}` : undefined;
+}
+
+type GithubContentFile = {
+  content: string;
+  sha: string;
+};
+
+async function readGithubContentFile(input: {
+  repository: string;
+  branch: string;
+  token: string;
+  path: string;
+}): Promise<GithubContentFile | undefined> {
+  const response = await fetch(githubContentUrl(input.repository, input.path, input.branch), {
+    headers: githubHeaders(input.token),
+    cache: "no-store",
+  });
+
+  if (response.status === 404) {
+    return undefined;
+  }
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new LooprailStorageError(
+      githubErrorMessage("read the existing blog draft", response.status, body),
+    );
+  }
+
+  if (!isPlainObject(body) || typeof body.content !== "string" || typeof body.sha !== "string") {
+    throw new LooprailStorageError("GitHub returned an unexpected content response.");
+  }
+
+  return {
+    content: Buffer.from(body.content.replace(/\s/g, ""), "base64").toString("utf8"),
+    sha: body.sha,
+  };
+}
+
+async function writeGithubContentFile(input: {
+  repository: string;
+  branch: string;
+  token: string;
+  path: string;
+  content: string;
+  message: string;
+  committerName: string;
+  committerEmail: string;
+}) {
+  const existing = await readGithubContentFile(input);
+  const response = await fetch(githubContentUrl(input.repository, input.path), {
+    method: "PUT",
+    headers: githubHeaders(input.token),
+    body: JSON.stringify({
+      message: input.message,
+      content: Buffer.from(input.content, "utf8").toString("base64"),
+      branch: input.branch,
+      sha: existing?.sha,
+      committer: {
+        name: input.committerName,
+        email: input.committerEmail,
+      },
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new LooprailStorageError(
+      githubErrorMessage("commit the blog draft", response.status, body),
+    );
+  }
+}
+
+async function deleteGithubContentFile(input: {
+  repository: string;
+  branch: string;
+  token: string;
+  path: string;
+  message: string;
+  committerName: string;
+  committerEmail: string;
+}) {
+  const existing = await readGithubContentFile(input);
+  if (!existing) return;
+
+  const response = await fetch(githubContentUrl(input.repository, input.path), {
+    method: "DELETE",
+    headers: githubHeaders(input.token),
+    body: JSON.stringify({
+      message: input.message,
+      branch: input.branch,
+      sha: existing.sha,
+      committer: {
+        name: input.committerName,
+        email: input.committerEmail,
+      },
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new LooprailStorageError(
+      githubErrorMessage("remove the previous blog draft", response.status, body),
+    );
+  }
+}
+
+function githubContentUrl(repository: string, filePath: string, ref?: string): string {
+  const encodedPath = filePath.split("/").map(encodeURIComponent).join("/");
+  const url = new URL(
+    `https://api.github.com/repos/${repository}/contents/${encodedPath}`,
+  );
+  if (ref) url.searchParams.set("ref", ref);
+  return url.toString();
+}
+
+function githubHeaders(token: string): HeadersInit {
+  return {
+    Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+}
+
+function githubErrorMessage(action: string, status: number, body: unknown): string {
+  const message =
+    isPlainObject(body) && typeof body.message === "string"
+      ? body.message
+      : "GitHub returned an unexpected error.";
+  return `Looprail CMS could not ${action}. GitHub returned HTTP ${status}: ${message}`;
+}
+
+function storageErrorMessage(action: string, error: unknown): string {
+  const message = error instanceof Error ? error.message : "Unknown storage error.";
+  return `Looprail CMS could not ${action}: ${message}`;
+}
+
 function deriveTags(article: NormalizedLooprailArticle): string[] {
   const tags = [...article.tags];
 
@@ -548,19 +850,15 @@ export async function persistLooprailArticle(
   options: PersistLooprailArticleOptions = {},
 ): Promise<LooprailArticleResult> {
   const article = validateLooprailArticle(payload, status);
-  const contentDirectory = options.contentDirectory ?? POSTS_DIRECTORY;
+  const storage = createLooprailArticleStorage(options);
   const now = options.now ?? new Date();
-  const targetPath = articlePathForSlug(contentDirectory, article.slug);
   const externalSlug = article.externalArticleId
     ? normalizeSlug(article.externalArticleId)
     : undefined;
-  const externalPath =
-    externalSlug && externalSlug !== article.slug
-      ? articlePathForSlug(contentDirectory, externalSlug)
-      : undefined;
   const existingPost =
-    (externalPath ? await readExistingPost(externalPath) : undefined) ??
-    (await readExistingPost(targetPath));
+    (externalSlug && externalSlug !== article.slug
+      ? await storage.read(externalSlug)
+      : undefined) ?? (await storage.read(article.slug));
   const frontmatter = buildFrontmatter(
     article,
     status,
@@ -568,12 +866,19 @@ export async function persistLooprailArticle(
     existingPost?.data ?? {},
   );
   const fileBody = matter.stringify(`${article.content.trim()}\n`, frontmatter);
+  const actionLabel = status === "published" ? "Publish" : "Draft";
 
-  await mkdir(contentDirectory, { recursive: true });
-  await writeFile(targetPath, fileBody, "utf8");
+  await storage.write(
+    article.slug,
+    fileBody,
+    `${actionLabel} Looprail article: ${article.title}`,
+  );
 
-  if (externalPath && externalPath !== targetPath && fs.existsSync(externalPath)) {
-    await unlink(externalPath);
+  if (externalSlug && externalSlug !== article.slug) {
+    await storage.delete(
+      externalSlug,
+      `Remove replaced Looprail article draft: ${externalSlug}`,
+    );
   }
 
   return {
@@ -597,6 +902,20 @@ export function looprailErrorResponse(error: unknown): Response {
       { status: 400 },
     );
   }
+
+  if (error instanceof LooprailStorageError) {
+    console.error("Looprail CMS storage failed.", {
+      name: error.name,
+      message: error.message,
+      status: error.status,
+    });
+    return Response.json({ error: error.message }, { status: error.status });
+  }
+
+  console.error("Looprail CMS article processing failed.", {
+    name: error instanceof Error ? error.name : "UnknownError",
+    message: error instanceof Error ? error.message : "Unknown error",
+  });
 
   return Response.json(
     { error: "Unable to process Looprail article" },

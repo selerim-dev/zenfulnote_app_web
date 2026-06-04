@@ -1,8 +1,10 @@
 # Looprail Custom CMS API
 
 This site exposes a small server API for Looprail to create blog drafts and
-publish approved articles. The API writes MDX files into `content/blog`.
-Deploy the site in an environment where that directory is writable at runtime.
+publish approved articles. Locally, the API writes MDX files into
+`content/blog`. In Vercel production, the deployed filesystem is read-only, so
+the API commits MDX files back to the GitHub repository. Vercel then redeploys
+from the committed content.
 
 ## Environment
 
@@ -17,11 +19,22 @@ Optional settings:
 ```bash
 LOOPRAIL_CMS_AUTH_HEADER="x-looprail-api-key"
 LOOPRAIL_CMS_PUBLIC_BASE_URL="https://www.zenfulnote.app"
+LOOPRAIL_CMS_STORAGE_MODE="github"
+LOOPRAIL_CMS_GITHUB_TOKEN="github-fine-grained-token"
+LOOPRAIL_CMS_GITHUB_REPO="selerim-dev/zenfulnote_app_web"
+LOOPRAIL_CMS_GITHUB_BRANCH="main"
+LOOPRAIL_CMS_GITHUB_COMMITTER_NAME="Looprail CMS"
+LOOPRAIL_CMS_GITHUB_COMMITTER_EMAIL="looprail-cms@users.noreply.github.com"
 ```
 
 `LOOPRAIL_CMS_AUTH_HEADER` defaults to `x-looprail-api-key`.
 `LOOPRAIL_CMS_PUBLIC_BASE_URL` controls the `url` returned in draft and publish
 responses. If it is not set, the site URL from `src/config/site.ts` is used.
+
+For Vercel, configure `LOOPRAIL_CMS_GITHUB_TOKEN` with a fine-grained GitHub
+token that has Contents read/write access to this repository. Without it, the
+API will return a setup error because Vercel cannot persist runtime writes to
+`content/blog`.
 
 ## Connector Values
 
