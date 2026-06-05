@@ -47,7 +47,9 @@ export function BlogFilterGrid({ categories, posts }: BlogFilterGridProps) {
       ) : (
         <div className="mt-10 rounded-lg border border-black/10 bg-white p-8 text-center">
           <p className="text-sm text-muted">
-            No posts are published in this category yet.
+            {activeCategory === "All"
+              ? "No posts are published yet."
+              : "No posts are published in this category yet."}
           </p>
         </div>
       )}

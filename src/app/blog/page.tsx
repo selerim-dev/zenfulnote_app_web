@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 export default async function BlogPage() {
   const posts = await getAllPosts();
   const categories = await getAllCategories();
-  const [featured, ...remainingPosts] = posts;
+  const featured = posts[0];
 
   return (
     <div className="flex min-h-screen flex-col bg-white text-black">
@@ -81,7 +81,14 @@ export default async function BlogPage() {
           <section className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
             <Link
               href={`/blog/${featured.slug}`}
-              className="group grid overflow-hidden rounded-[18px] border border-black/10 bg-white transition hover:-translate-y-0.5 hover:shadow-[0_24px_90px_rgba(0,0,0,0.10)] lg:grid-cols-[0.92fr_1.08fr]"
+              className={[
+                "group grid overflow-hidden rounded-[18px] border border-black/10 bg-white transition hover:-translate-y-0.5 hover:shadow-[0_24px_90px_rgba(0,0,0,0.10)]",
+                featured.featuredImage
+                  ? "lg:grid-cols-[0.92fr_1.08fr]"
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
             >
               {featured.featuredImage ? (
                 <div className="relative min-h-[320px] border-b border-black/10 bg-[#f8f6ef] lg:border-b-0 lg:border-r">
@@ -127,7 +134,10 @@ export default async function BlogPage() {
           </section>
         ) : null}
 
-        <BlogFilterGrid categories={categories} posts={remainingPosts} />
+        <BlogFilterGrid
+          categories={categories}
+          posts={posts}
+        />
       </main>
       <SiteFooter />
     </div>
