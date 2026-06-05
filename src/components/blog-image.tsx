@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
+"use client";
 
 import Image from "next/image";
 
@@ -36,6 +37,9 @@ export function BlogImage({
         height={height}
         loading={loading ?? (priority ? "eager" : "lazy")}
         fetchPriority={fetchPriority ?? (priority ? "high" : "auto")}
+        onError={(event) => {
+          event.currentTarget.hidden = true;
+        }}
         className={[fill ? "absolute inset-0 size-full" : "", className ?? ""]
           .filter(Boolean)
           .join(" ")}

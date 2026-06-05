@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
 import { cache } from "react";
+import { normalizeRenderableBlogImageSrc } from "./blog-images.ts";
 import {
   readLooprailStoredArticles,
   type StoredLooprailArticle,
@@ -75,6 +76,8 @@ function normalizePost(fileName: string): BlogPost {
     );
   }
 
+  const featuredImage = normalizeRenderableBlogImageSrc(data.featuredImage);
+
   return {
     slug,
     title: data.title,
@@ -91,10 +94,9 @@ function normalizePost(fileName: string): BlogPost {
     category: data.category,
     tags: data.tags,
     promoted: data.promoted === true,
-    featuredImage:
-      typeof data.featuredImage === "string" ? data.featuredImage : undefined,
+    featuredImage,
     featuredImageAlt:
-      typeof data.featuredImageAlt === "string"
+      featuredImage && typeof data.featuredImageAlt === "string"
         ? data.featuredImageAlt
         : undefined,
     published: data.published,
@@ -105,6 +107,8 @@ function normalizePost(fileName: string): BlogPost {
 }
 
 function normalizeStoredPost(article: StoredLooprailArticle): BlogPost {
+  const featuredImage = normalizeRenderableBlogImageSrc(article.featuredImage);
+
   return {
     slug: article.slug,
     title: article.title,
@@ -115,8 +119,8 @@ function normalizeStoredPost(article: StoredLooprailArticle): BlogPost {
     category: article.category,
     tags: article.tags,
     promoted: article.promoted,
-    featuredImage: article.featuredImage,
-    featuredImageAlt: article.featuredImageAlt,
+    featuredImage,
+    featuredImageAlt: featuredImage ? article.featuredImageAlt : undefined,
     published: article.published,
     author: article.author,
     content: article.content,

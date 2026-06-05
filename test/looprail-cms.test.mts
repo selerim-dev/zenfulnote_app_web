@@ -106,6 +106,21 @@ test("accepts Looprail drafted status as a draft alias", () => {
   assert.equal(article.status, "draft");
 });
 
+test("drops non-renderable featured image URLs from Looprail payloads", () => {
+  const article = validateLooprailArticle(
+    {
+      ...sampleArticle,
+      featured_image:
+        "https://drive.google.com/drive/folders/1NA65ljYZC7CRvXvXIMPdf1I_SK9FmA5D",
+      featured_image_alt: "Drive folder that cannot render as an image",
+    },
+    "draft",
+  );
+
+  assert.equal(article.featuredImage, undefined);
+  assert.equal(article.featuredImageAlt, undefined);
+});
+
 test("rejects invalid status, arrays, and unsafe content", () => {
   assert.throws(
     () =>

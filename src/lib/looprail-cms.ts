@@ -4,6 +4,7 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { BlobNotFoundError, del, get, put } from "@vercel/blob";
 import matter from "gray-matter";
+import { normalizeRenderableBlogImageSrc } from "./blog-images.ts";
 
 export const DEFAULT_LOOPRAIL_AUTH_HEADER = "x-looprail-api-key";
 export const LOOPRAIL_API_KEY_ENV = "LOOPRAIL_CMS_API_KEY";
@@ -476,12 +477,15 @@ export function validateLooprailArticle(
     MAX_BODY_LENGTH,
   );
   const html = optionalString(payload, "html", issues, MAX_BODY_LENGTH);
-  const featuredImage =
+  const rawFeaturedImage =
     optionalString(payload, "featured_image", issues, MAX_URL_LENGTH) ??
     optionalString(payload, "featuredImage", issues, MAX_URL_LENGTH);
+  const featuredImage = normalizeRenderableBlogImageSrc(rawFeaturedImage);
   const featuredImageAlt =
-    optionalString(payload, "featured_image_alt", issues) ??
-    optionalString(payload, "featuredImageAlt", issues);
+    featuredImage
+      ? optionalString(payload, "featured_image_alt", issues) ??
+        optionalString(payload, "featuredImageAlt", issues)
+      : undefined;
   const primaryKeyword = optionalString(payload, "primary_keyword", issues);
   const secondaryKeywords = optionalStringArray(
     payload,
@@ -1595,6 +1599,9 @@ export async function updateLooprailStoredArticle(
     typeof update.published === "boolean" ? update.published : current.published;
   const nextStatus: LooprailArticleStatus = nextPublished ? "published" : "draft";
   const nextContentFormat = update.contentFormat ?? current.contentFormat;
+  const nextFeaturedImage = hasOwn(update, "featuredImage")
+    ? normalizeRenderableBlogImageSrc(trimmedOptional(update.featuredImage, MAX_URL_LENGTH))
+    : current.featuredImage;
   const next: StoredLooprailArticle = compactObject({
     ...current,
     status: nextStatus,
@@ -1611,12 +1618,14 @@ export async function updateLooprailStoredArticle(
     tags: Array.isArray(update.tags)
       ? uniqueStringArray(update.tags, 24, MAX_SHORT_TEXT_LENGTH)
       : current.tags,
-    featuredImage: hasOwn(update, "featuredImage")
-      ? trimmedOptional(update.featuredImage, MAX_URL_LENGTH)
-      : current.featuredImage,
+    featuredImage: nextFeaturedImage,
     featuredImageAlt: hasOwn(update, "featuredImageAlt")
-      ? trimmedOptional(update.featuredImageAlt, MAX_SHORT_TEXT_LENGTH)
-      : current.featuredImageAlt,
+      ? nextFeaturedImage
+        ? trimmedOptional(update.featuredImageAlt, MAX_SHORT_TEXT_LENGTH)
+        : undefined
+      : nextFeaturedImage
+        ? current.featuredImageAlt
+        : undefined,
     author: trimmedOr(update.author, current.author, MAX_SHORT_TEXT_LENGTH),
     content:
       typeof update.content === "string" && update.content.trim()
