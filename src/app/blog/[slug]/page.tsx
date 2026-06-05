@@ -33,15 +33,17 @@ export async function generateMetadata({
     return {};
   }
 
+  const seoDescription = post.metaDescription ?? post.description;
+
   return {
     title: post.title,
-    description: post.description,
+    description: seoDescription,
     alternates: {
       canonical: `/blog/${post.slug}`,
     },
     openGraph: {
       title: post.title,
-      description: post.description,
+      description: seoDescription,
       type: "article",
       publishedTime: post.date,
       modifiedTime: post.updatedAt,

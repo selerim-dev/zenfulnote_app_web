@@ -86,6 +86,7 @@ test("validates and normalizes Looprail article payloads", () => {
   assert.equal(article.slug, "article-title");
   assert.equal(article.status, "draft");
   assert.equal(article.contentFormat, "markdown");
+  assert.equal(article.metaDescription, "SEO meta description");
   assert.equal(article.featuredImage, "https://cdn.example.com/zenfulnote-cover.png");
   assert.equal(article.featuredImageAlt, "ZenfulNote article cover");
   assert.equal(article.images?.length, 1);
@@ -151,6 +152,7 @@ test("writes an unpublished draft MDX file", async (t) => {
 
   assert.equal(parsed.data.title, "Article title");
   assert.equal(parsed.data.description, "Short excerpt");
+  assert.equal(parsed.data.metaDescription, "SEO meta description");
   assert.equal(parsed.data.date, "2026-06-03");
   assert.equal(parsed.data.published, false);
   assert.equal(parsed.data.author, "Looprail");
@@ -207,6 +209,8 @@ test("writes runtime articles without touching MDX content", async (t) => {
   const articles = await readLooprailStoredArticles({ runtimeDirectory });
   assert.equal(articles.length, 1);
   assert.equal(articles[0].title, "Updated article title");
+  assert.equal(articles[0].description, "Short excerpt");
+  assert.equal(articles[0].metaDescription, "SEO meta description");
   assert.equal(articles[0].date, "2026-06-02");
   assert.equal(articles[0].updatedAt, "2026-06-03");
   assert.equal(articles[0].published, true);

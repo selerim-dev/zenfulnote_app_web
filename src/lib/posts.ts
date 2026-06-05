@@ -11,6 +11,7 @@ export type BlogPostMeta = {
   slug: string;
   title: string;
   description: string;
+  metaDescription?: string;
   date: string;
   updatedAt?: string;
   category: string;
@@ -78,6 +79,10 @@ function normalizePost(fileName: string): BlogPost {
     slug,
     title: data.title,
     description: data.description,
+    metaDescription:
+      typeof data.metaDescription === "string" && data.metaDescription
+        ? data.metaDescription
+        : undefined,
     date: data.date,
     updatedAt:
       typeof data.updatedAt === "string" && data.updatedAt
@@ -104,6 +109,7 @@ function normalizeStoredPost(article: StoredLooprailArticle): BlogPost {
     slug: article.slug,
     title: article.title,
     description: article.description,
+    metaDescription: article.metaDescription,
     date: article.date,
     updatedAt: article.updatedAt,
     category: article.category,
