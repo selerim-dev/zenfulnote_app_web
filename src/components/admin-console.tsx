@@ -1,12 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
   BarChart3,
   BookOpen,
+  CalendarDays,
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
@@ -27,6 +28,7 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Target,
   TrendingUp,
   Upload,
   Users,
@@ -86,6 +88,13 @@ type ContentEditorState = {
   error?: string;
 };
 
+const periodOptions = [7, 14, 30, 60, 90] as const;
+const retentionTargets = {
+  d1: 25,
+  d7: 10,
+  d30: 5,
+};
+
 const pages: Array<{ key: AdminPageKey; label: string; icon: LucideIcon }> = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
   { key: "retention", label: "Retention", icon: HeartPulse },
@@ -105,6 +114,8 @@ const contentTabs: Array<{ key: ContentKey; label: string; icon: LucideIcon }> =
   { key: "journals", label: "Journals", icon: BookOpen },
 ];
 
+const mediaContentTypes = new Set<ContentKey>(["meditations", "exercises", "audio"]);
+
 export function AdminConsole({
   articles,
   dashboard: initialDashboard,
@@ -114,6 +125,7 @@ export function AdminConsole({
 }: AdminConsoleProps) {
   const [activePage, setActivePage] = useState<AdminPageKey>("overview");
   const [contentTab, setContentTab] = useState<ContentKey>("meditations");
+  const [periodDays, setPeriodDays] = useState(initialDashboard.period.days || 30);
   const [dashboard, setDashboard] = useState(initialDashboard);
   const [dashboardLoaded, setDashboardLoaded] = useState(dashboardInitiallyLoaded);
   const [dashboardLoading, setDashboardLoading] = useState(!dashboardInitiallyLoaded);
@@ -138,14 +150,14 @@ export function AdminConsole({
   const requestTrend = dashboard.activity?.request_volume ?? [];
   const openWork = dashboard.health.todos.length;
 
-  async function refreshDashboard({ quiet = false }: { quiet?: boolean } = {}) {
+  async function refreshDashboard({ days = periodDays, quiet = false }: { days?: number; quiet?: boolean } = {}) {
     setDashboardLoading(true);
     if (!quiet) {
-      setToast({ tone: "info", sticky: true, message: "Refreshing dashboard data." });
+      setToast({ tone: "info", sticky: true, message: `Refreshing ${days}-day dashboard data.` });
     }
 
     try {
-      const response = await fetch("/api/admin/growth/dashboard?days=30", {
+      const response = await fetch(`/api/admin/growth/dashboard?days=${days}`, {
         cache: "no-store",
         headers: { Accept: "application/json" },
       });
@@ -159,6 +171,7 @@ export function AdminConsole({
       }
 
       setDashboard(body.data as GrowthDashboardData);
+      setPeriodDays((body.data as GrowthDashboardData).period.days || days);
       setDashboardLoaded(true);
       setDashboardErrorState("");
       if (!quiet) {
@@ -176,7 +189,7 @@ export function AdminConsole({
   useEffect(() => {
     if (!dashboardInitiallyLoaded) {
       const timeout = window.setTimeout(() => {
-        void refreshDashboard({ quiet: true });
+        void refreshDashboard({ days: periodDays, quiet: true });
       }, 0);
       return () => window.clearTimeout(timeout);
     }
@@ -212,7 +225,7 @@ export function AdminConsole({
         tone: "success",
         message: `Lifecycle audit completed in ${elapsed}s. Updating dashboard data.`,
       });
-      void refreshDashboard({ quiet: true });
+      void refreshDashboard({ days: periodDays, quiet: true });
     } catch (error) {
       setToast({
         tone: "danger",
@@ -248,11 +261,11 @@ export function AdminConsole({
               />
               <div className="min-w-0">
                 <Image
-                  src="/images/brand/logotype-dark.png"
+                  src="/images/brand/wordmark-white-large.png"
                   alt="ZenfulNote"
-                  width={118}
-                  height={27}
-                  className="h-auto w-28 [filter:brightness(0)]"
+                  width={146}
+                  height={36}
+                  className="h-auto w-[98px] [filter:brightness(0)]"
                   priority
                 />
                 <p className="mt-0.5 truncate text-xs text-black/54">Admin console</p>
@@ -274,6 +287,14 @@ export function AdminConsole({
             </nav>
 
             <div className="flex shrink-0 items-center gap-2">
+              <PeriodControl
+                days={periodDays}
+                loading={dashboardLoading}
+                onChange={(days) => {
+                  setPeriodDays(days);
+                  void refreshDashboard({ days });
+                }}
+              />
               <button
                 type="button"
                 onClick={runAudit}
@@ -334,7 +355,7 @@ export function AdminConsole({
                 contentTab={contentTab}
                 onContentTabChange={setContentTab}
                 onContentSaved={() => {
-                  void refreshDashboard({ quiet: true });
+                  void refreshDashboard({ days: periodDays, quiet: true });
                 }}
                 onNotice={setToast}
               />
@@ -370,6 +391,9 @@ function OverviewPage({
   users: GrowthDashboardData["summary"]["users"];
 }) {
   const activeRate = users.total > 0 ? (users.active_7d / users.total) * 100 : 0;
+  const retention = users.retention;
+  const eventTrend = dashboard.events.daily ?? [];
+  const dailyUsers = activation.daily_request_users ?? 0;
 
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden">
@@ -464,8 +488,8 @@ function OverviewPage({
 
       <div className="grid min-h-0 gap-3 overflow-hidden xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
       <Panel title="App Pulse" eyebrow={`${dashboard.period.days} day window`} icon={TrendingUp}>
-        <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
-          <div className="grid min-h-0 gap-3 lg:grid-cols-2">
+        <div className="grid h-full min-h-0 gap-3 overflow-y-auto pr-1 xl:overflow-hidden">
+          <div className="grid min-h-0 gap-3 md:grid-cols-2">
             <ChartBlock
               title="Daily active users"
               value={formatNumber(users.active_7d)}
@@ -488,12 +512,33 @@ function OverviewPage({
                 rows: trendSummaryRows(requestTrend),
               })}
             />
-          </div>
-          <div className="grid gap-2 sm:grid-cols-4">
-            <TinyStat label="D1 retention" value={formatPercent(users.retention.d1?.rate ?? 0)} />
-            <TinyStat label="D7 retention" value={formatPercent(users.retention.d7?.rate ?? 0)} />
-            <TinyStat label="D30 retention" value={formatPercent(users.retention.d30?.rate ?? 0)} />
-            <TinyStat label="Daily users" value={formatNumber(activation.daily_request_users ?? 0)} />
+            <ChartBlock
+              title="Growth events"
+              value={formatNumber(dashboard.events.total)}
+              data={eventTrend}
+              color="#ea6fcf"
+              onClick={() => onInspect({
+                eyebrow: "Trend",
+                title: "First-party growth events",
+                rows: trendSummaryRows(eventTrend),
+              })}
+            />
+            <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-white/55 bg-white/42 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Activation users</p>
+                  <p className="mt-1 text-2xl font-semibold tabular-nums text-black">{formatNumber(dailyUsers)}</p>
+                </div>
+                <Target aria-hidden="true" className="text-[#d29a13]" size={18} strokeWidth={1.9} />
+              </div>
+              <div className="min-h-0 content-center">
+                <RetentionTargetGrid
+                  compact
+                  retention={retention}
+                  onInspect={(label, cohort) => onInspect(retentionDetail(label, cohort))}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </Panel>
@@ -541,7 +586,7 @@ function RetentionPage({
   return (
     <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] xl:overflow-hidden">
       <Panel title="Retention Cohorts" eyebrow="Returned after signup" icon={HeartPulse}>
-        <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+        <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
           <div className="grid gap-2 sm:grid-cols-3">
             <RetentionCard
               label="Day 1"
@@ -565,13 +610,17 @@ function RetentionPage({
               onClick={() => onInspect(retentionDetail("Day 30", retention.d30))}
             />
           </div>
-          <button
-            type="button"
+          <RetentionTargetGrid
+            retention={retention}
+            onInspect={(label, cohort) => onInspect(retentionDetail(label, cohort))}
+          />
+          <ChartBlock
+            title="Daily active trend"
+            value={formatNumber(dashboard.summary.users.active_7d)}
+            data={dauTrend}
+            color="#5068e7"
             onClick={() => onInspect({ eyebrow: "Trend", title: "Daily active users", rows: trendSummaryRows(dauTrend) })}
-            className="min-h-0 rounded-lg border border-white/55 bg-white/45 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)]"
-          >
-            <LineChart data={dauTrend} color="#5068e7" />
-          </button>
+          />
         </div>
       </Panel>
       <div className="grid min-h-0 gap-3 xl:grid-rows-[minmax(0,0.54fr)_minmax(0,0.46fr)]">
@@ -643,13 +692,13 @@ function EventsPage({
               <SignalRow
                 key={event}
                 title={event}
-                detail="Missing in selected period"
-                value="Needs release"
+                detail="Expected event with no traffic in this period"
+                value="Not seen"
                 tone="warn"
                 onClick={() => onInspect({
                   eyebrow: "Missing event",
                   title: event,
-                  description: "This event has not appeared in production traffic for the selected period.",
+                  description: "This expected event has not appeared in production traffic for the selected period. If the flow exists in iOS, verify instrumentation and ship a new app release; otherwise add the event to the client tracking plan.",
                 })}
               />
             ))}
@@ -664,52 +713,67 @@ function EventsPage({
           </ScrollStack>
         </div>
       </Panel>
-      <div className="grid min-h-0 gap-3 lg:grid-cols-2">
-        <Panel title="Top Events" eyebrow="Volume by event" icon={BarChart3}>
-          <ScrollStack>
-            <SignalList
-              items={dashboard.events.top.map((event) => ({
-                label: event.event_name,
-                value: formatNumber(event.count),
-              }))}
-              empty="No first-party events received yet."
-              onInspect={(item) => onInspect({
-                eyebrow: "Event",
-                title: item.label,
-                rows: [{ label: "Count", value: item.value }],
-              })}
-            />
-          </ScrollStack>
+      <div className="grid min-h-0 gap-3 xl:grid-rows-[minmax(0,0.45fr)_minmax(0,0.55fr)]">
+        <Panel title="Event Volume" eyebrow="Client signal trend" icon={TrendingUp}>
+          <ChartBlock
+            title="Daily growth events"
+            value={formatNumber(dashboard.events.total)}
+            data={dashboard.events.daily}
+            color="#ea6fcf"
+            onClick={() => onInspect({
+              eyebrow: "Trend",
+              title: "Daily growth events",
+              rows: trendSummaryRows(dashboard.events.daily),
+            })}
+          />
         </Panel>
-        <Panel title="Recent Stream" eyebrow="Latest payloads" icon={Send}>
-          <ScrollStack>
-            {dashboard.events.recent.map((event) => (
-              <SignalRow
-                key={`${event.event_name}-${event.created_at}`}
-                title={event.event_name}
-                detail={`${event.source} / user ${event.user_id ?? "anonymous"}`}
-                value={formatDateTime(event.created_at)}
-                onClick={() => onInspect({
-                  eyebrow: "Recent event",
-                  title: event.event_name,
-                  rows: [
-                    { label: "Source", value: event.source },
-                    { label: "User", value: event.user_id ?? "anonymous" },
-                    { label: "Created", value: formatDateTime(event.created_at) },
-                  ],
+        <div className="grid min-h-0 gap-3 lg:grid-cols-2">
+          <Panel title="Top Events" eyebrow="Volume by event" icon={BarChart3}>
+            <ScrollStack>
+              <SignalList
+                items={dashboard.events.top.map((event) => ({
+                  label: event.event_name,
+                  value: formatNumber(event.count),
+                }))}
+                empty="No first-party events received yet."
+                onInspect={(item) => onInspect({
+                  eyebrow: "Event",
+                  title: item.label,
+                  rows: [{ label: "Count", value: item.value }],
                 })}
               />
-            ))}
-            {!dashboard.events.recent.length ? (
-              <QuietState
-                icon={AlertTriangle}
-                title="No recent events"
-                detail="The stream will fill after the released app posts growth events."
-                tone="warn"
-              />
-            ) : null}
-          </ScrollStack>
-        </Panel>
+            </ScrollStack>
+          </Panel>
+          <Panel title="Recent Stream" eyebrow="Latest payloads" icon={Send}>
+            <ScrollStack>
+              {dashboard.events.recent.map((event) => (
+                <SignalRow
+                  key={`${event.event_name}-${event.created_at}`}
+                  title={event.event_name}
+                  detail={`${event.source} / user ${event.user_id ?? "anonymous"}`}
+                  value={formatDateTime(event.created_at)}
+                  onClick={() => onInspect({
+                    eyebrow: "Recent event",
+                    title: event.event_name,
+                    rows: [
+                      { label: "Source", value: event.source },
+                      { label: "User", value: event.user_id ?? "anonymous" },
+                      { label: "Created", value: formatDateTime(event.created_at) },
+                    ],
+                  })}
+                />
+              ))}
+              {!dashboard.events.recent.length ? (
+                <QuietState
+                  icon={AlertTriangle}
+                  title="No recent events"
+                  detail="The stream will fill after the released app posts growth events."
+                  tone="warn"
+                />
+              ) : null}
+            </ScrollStack>
+          </Panel>
+        </div>
       </div>
     </div>
   );
@@ -732,15 +796,33 @@ function LifecyclePage({
   const sendgridReady = readiness.integrations.sendgrid_api_key;
 
   return (
-    <div className="grid h-full min-h-0 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <Panel title="Lifecycle Email" eyebrow="Loops and SendGrid" icon={Mail}>
-        <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-          <div className="grid gap-2 sm:grid-cols-4">
-            <TinyStat label="Total email" value={formatNumber(dashboard.emails.total)} />
-            <TinyStat label="Growth sends" value={formatNumber(dashboard.emails.growth_total)} />
-            <TinyStat label="Legacy sends" value={formatNumber(dashboard.emails.legacy_total)} />
-            <TinyStat label="Failure rate" value={`${dashboard.emails.failure_rate}%`} />
+    <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] xl:overflow-hidden">
+      <div className="grid min-h-0 gap-3 xl:grid-rows-[minmax(0,0.58fr)_minmax(0,0.42fr)]">
+        <Panel title="Lifecycle Email" eyebrow="Delivery mix" icon={Mail}>
+          <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+            <div className="grid gap-2 sm:grid-cols-4">
+              <TinyStat label="Total email" value={formatNumber(dashboard.emails.total)} />
+              <TinyStat label="Growth sends" value={formatNumber(dashboard.emails.growth_total)} />
+              <TinyStat label="Failed" value={formatNumber(dashboard.emails.failed)} />
+              <TinyStat label="Failure rate" value={`${dashboard.emails.failure_rate}%`} />
+            </div>
+            <ScrollStack>
+              <EmailStatusBars
+                emails={dashboard.emails.by_type}
+                onInspect={(email) => onInspect({
+                  eyebrow: "Email cohort",
+                  title: `${email.email_type} / ${email.status}`,
+                  rows: [
+                    { label: "Type", value: email.email_type },
+                    { label: "Status", value: email.status },
+                    { label: "Count", value: email.count },
+                  ],
+                })}
+              />
+            </ScrollStack>
           </div>
+        </Panel>
+        <Panel title="Vendor Readiness" eyebrow="Loops and SendGrid" icon={ShieldCheck}>
           <ScrollStack>
             <HealthCheckRow
               check={{
@@ -758,68 +840,64 @@ function LifecyclePage({
                 detail: sendgridReady ? "SENDGRID_API_KEY is configured." : "SENDGRID_API_KEY is missing.",
               }}
             />
-            <SignalList
-              items={dashboard.emails.by_type.map((email) => ({
-                label: `${email.email_type} / ${email.status}`,
-                value: formatNumber(email.count),
-              }))}
-              empty="No lifecycle email rows found."
-              onInspect={(item) => onInspect({
-                eyebrow: "Email cohort",
-                title: item.label,
-                rows: [{ label: "Count", value: item.value }],
-              })}
-            />
-          </ScrollStack>
-        </div>
-      </Panel>
-      <Panel title="Automation Runs" eyebrow="Audit and recommendations" icon={RefreshCw}>
-        <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-          <button
-            type="button"
-            onClick={onAudit}
-            disabled={auditRunning}
-            className="inline-flex min-h-12 w-fit items-center gap-2 rounded-lg bg-black px-4 text-sm font-semibold text-white transition hover:bg-[#292929] disabled:cursor-wait disabled:opacity-65"
-          >
-            <RefreshCw
-              aria-hidden="true"
-              size={16}
-              strokeWidth={1.9}
-              className={auditRunning ? "animate-spin" : undefined}
-            />
-            {auditRunning ? "Audit running" : "Run audit"}
-          </button>
-          <ScrollStack>
-            {dashboard.automation.recent_runs.map((run) => (
-              <SignalRow
-                key={`${run.run_type}-${run.started_at}`}
-                title={run.run_type}
-                detail={run.finished_at ? `Finished ${formatDateTime(run.finished_at)}` : "Run in progress"}
-                value={titleCase(run.status)}
-                tone={run.status === "completed" ? "good" : "warn"}
-                onClick={() => onInspect({
-                  eyebrow: "Automation run",
-                  title: run.run_type,
-                  rows: [
-                    { label: "Status", value: titleCase(run.status) },
-                    { label: "Health score", value: run.health_score ?? "n/a" },
-                    { label: "Started", value: run.started_at ? formatDateTime(run.started_at) : "n/a" },
-                    { label: "Finished", value: run.finished_at ? formatDateTime(run.finished_at) : "n/a" },
-                  ],
-                })}
-              />
+            {dashboard.vendor_health.map((check) => (
+              <HealthCheckRow key={check.key} check={check} />
             ))}
-            {!dashboard.automation.recent_runs.length ? (
-              <QuietState
-                icon={AlertTriangle}
-                title="No automation runs"
-                detail="Run an audit after Loops workflows are configured."
-                tone="warn"
-              />
-            ) : null}
           </ScrollStack>
-        </div>
-      </Panel>
+        </Panel>
+      </div>
+      <div className="grid min-h-0 gap-3 xl:grid-rows-[minmax(0,0.58fr)_minmax(0,0.42fr)]">
+        <Panel title="Recent Email Stream" eyebrow="Actual sends" icon={Send}>
+          <EmailRecentStream emails={dashboard.emails.recent} onInspect={onInspect} />
+        </Panel>
+        <Panel title="Automation Runs" eyebrow="Audit and recommendations" icon={RefreshCw}>
+          <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+            <button
+              type="button"
+              onClick={onAudit}
+              disabled={auditRunning}
+              className="inline-flex min-h-10 w-fit items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#292929] hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:cursor-wait disabled:opacity-65"
+            >
+              <RefreshCw
+                aria-hidden="true"
+                size={16}
+                strokeWidth={1.9}
+                className={auditRunning ? "animate-spin" : undefined}
+              />
+              {auditRunning ? "Audit running" : "Run audit"}
+            </button>
+            <ScrollStack>
+              {dashboard.automation.recent_runs.map((run) => (
+                <SignalRow
+                  key={`${run.run_type}-${run.started_at}`}
+                  title={run.run_type}
+                  detail={run.finished_at ? `Finished ${formatDateTime(run.finished_at)}` : "Run in progress"}
+                  value={titleCase(run.status)}
+                  tone={run.status === "completed" ? "good" : "warn"}
+                  onClick={() => onInspect({
+                    eyebrow: "Automation run",
+                    title: run.run_type,
+                    rows: [
+                      { label: "Status", value: titleCase(run.status) },
+                      { label: "Health score", value: run.health_score ?? "n/a" },
+                      { label: "Started", value: run.started_at ? formatDateTime(run.started_at) : "n/a" },
+                      { label: "Finished", value: run.finished_at ? formatDateTime(run.finished_at) : "n/a" },
+                    ],
+                  })}
+                />
+              ))}
+              {!dashboard.automation.recent_runs.length ? (
+                <QuietState
+                  icon={AlertTriangle}
+                  title="No automation runs"
+                  detail="Run an audit after Loops workflows are configured."
+                  tone="warn"
+                />
+              ) : null}
+            </ScrollStack>
+          </div>
+        </Panel>
+      </div>
     </div>
   );
 }
@@ -1167,6 +1245,40 @@ function TabButton({
   );
 }
 
+function PeriodControl({
+  days,
+  loading,
+  onChange,
+}: {
+  days: number;
+  loading: boolean;
+  onChange: (days: number) => void;
+}) {
+  return (
+    <div className="hidden items-center gap-1 rounded-full border border-white/55 bg-white/34 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] backdrop-blur-xl lg:flex">
+      <span className="grid size-8 place-items-center rounded-full text-black/48">
+        <CalendarDays aria-hidden="true" size={15} strokeWidth={1.9} />
+      </span>
+      {periodOptions.map((option) => (
+        <button
+          key={option}
+          type="button"
+          onClick={() => onChange(option)}
+          disabled={loading && option === days}
+          className={[
+            "min-h-8 rounded-full px-2.5 text-xs font-semibold tabular-nums transition duration-200",
+            days === option
+              ? "bg-black text-white shadow-[0_10px_24px_rgba(0,0,0,0.16)]"
+              : "text-black/58 hover:-translate-y-0.5 hover:bg-white/72 hover:text-black hover:shadow-[0_12px_28px_rgba(80,104,231,0.12)]",
+          ].join(" ")}
+        >
+          {option}d
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function MetricTile({
   detail,
   icon: Icon,
@@ -1241,7 +1353,7 @@ function ChartBlock({
     </>
   );
 
-  const className = "grid min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-white/55 bg-white/42 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)]";
+  const className = "grid h-full min-h-0 w-full grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-white/55 bg-white/42 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)]";
 
   if (onClick) {
     return (
@@ -1259,7 +1371,10 @@ function ChartBlock({
 }
 
 function LineChart({ color, data }: { color: string; data: GrowthTrendPoint[] }) {
-  const points = useMemo(() => {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const rawGradientId = useId();
+  const gradientId = `chart-${rawGradientId.replace(/:/g, "")}`;
+  const chart = useMemo(() => {
     const visible = data.slice(-30);
     const max = Math.max(...visible.map((point) => point.count), 1);
     const width = 320;
@@ -1272,6 +1387,7 @@ function LineChart({ color, data }: { color: string; data: GrowthTrendPoint[] })
       return { ...point, x, y };
     });
   }, [data]);
+  const points = chart;
 
   if (!points.length) {
     return (
@@ -1283,20 +1399,55 @@ function LineChart({ color, data }: { color: string; data: GrowthTrendPoint[] })
 
   const path = points.map((point) => `${point.x},${point.y}`).join(" ");
   const area = `0,128 ${path} 320,128`;
+  const activePoint = hoverIndex === null ? null : points[hoverIndex] ?? null;
+
+  function handlePointerMove(event: React.PointerEvent<SVGSVGElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
+    const bounded = Math.max(0, Math.min(1, ratio));
+    setHoverIndex(Math.round(bounded * (points.length - 1)));
+  }
+
+  const tooltipWidth = 118;
+  const tooltipHeight = 42;
+  const tooltipX = activePoint ? Math.max(4, Math.min(320 - tooltipWidth - 4, activePoint.x - tooltipWidth / 2)) : 0;
+  const tooltipY = activePoint ? (activePoint.y > 56 ? activePoint.y - tooltipHeight - 10 : activePoint.y + 14) : 0;
 
   return (
-    <svg viewBox="0 0 320 128" className="h-full min-h-32 w-full" role="img" aria-label="Trend chart">
+    <svg
+      viewBox="0 0 320 128"
+      className="h-full min-h-32 w-full"
+      role="img"
+      aria-label="Trend chart"
+      onPointerMove={handlePointerMove}
+      onPointerLeave={() => setHoverIndex(null)}
+    >
       <defs>
-        <linearGradient id={`chart-${color.replace("#", "")}`} x1="0" x2="0" y1="0" y2="1">
+        <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.28" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <polygon points={area} fill={`url(#chart-${color.replace("#", "")})`} />
+      <polygon points={area} fill={`url(#${gradientId})`} />
       <polyline points={path} fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
       {points.slice(-1).map((point) => (
         <circle key={point.date} cx={point.x} cy={point.y} r="3" fill={color} />
       ))}
+      {activePoint ? (
+        <g className="pointer-events-none">
+          <line x1={activePoint.x} x2={activePoint.x} y1="8" y2="120" stroke="rgba(0,0,0,0.18)" strokeDasharray="3 4" />
+          <circle cx={activePoint.x} cy={activePoint.y} r="4.5" fill="white" stroke={color} strokeWidth="2" />
+          <g transform={`translate(${tooltipX}, ${tooltipY})`}>
+            <rect width={tooltipWidth} height={tooltipHeight} rx="9" fill="rgba(255,255,255,0.92)" stroke="rgba(0,0,0,0.12)" />
+            <text x="10" y="17" className="fill-black/55 text-[10px] font-semibold uppercase">
+              {formatChartDate(activePoint.date)}
+            </text>
+            <text x="10" y="33" className="fill-black text-[13px] font-semibold">
+              {formatNumber(activePoint.count)}
+            </text>
+          </g>
+        </g>
+      ) : null}
     </svg>
   );
 }
@@ -1436,6 +1587,70 @@ function RetentionCard({
   );
 }
 
+function RetentionTargetGrid({
+  compact = false,
+  onInspect,
+  retention,
+}: {
+  compact?: boolean;
+  onInspect?: (label: string, cohort?: { cohort: number; retained: number; rate: number }) => void;
+  retention: GrowthDashboardData["summary"]["users"]["retention"];
+}) {
+  const items = [
+    { key: "d1", label: "D1 retention", target: retentionTargets.d1, cohort: retention.d1 },
+    { key: "d7", label: "D7 retention", target: retentionTargets.d7, cohort: retention.d7 },
+    { key: "d30", label: "D30 retention", target: retentionTargets.d30, cohort: retention.d30 },
+  ];
+
+  return (
+    <div className={compact ? "grid gap-2" : "grid gap-2 md:grid-cols-3"}>
+      {items.map((item) => {
+        const rate = item.cohort?.rate ?? 0;
+        const scaleMax = Math.max(item.target * 1.55, rate, 1);
+        const barWidth = Math.min(100, (rate / scaleMax) * 100);
+        const targetLeft = Math.min(98, (item.target / scaleMax) * 100);
+        const delta = rate - item.target;
+        const shortLabel = item.key.toUpperCase();
+
+        return (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => onInspect?.(item.label.toUpperCase().replace(" RETENTION", ""), item.cohort)}
+            className="rounded-lg border border-white/55 bg-white/42 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_50px_rgba(80,104,231,0.14)]"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-black/48">{compact ? item.label : shortLabel}</p>
+              <span className={["rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums", delta >= 0 ? "bg-[#f3fbf1] text-[#176e0f]" : "bg-[#fff9e8] text-[#96690f]"].join(" ")}>
+                {delta >= 0 ? "+" : ""}{formatPercent(delta)}
+              </span>
+            </div>
+            <div className="mt-2 flex items-end justify-between gap-3">
+              <p className="text-xl font-semibold tabular-nums text-black">{formatPercent(rate)}</p>
+              <p className="text-xs font-semibold text-[#9b710c]">Gold {formatPercent(item.target)}</p>
+            </div>
+            <div className="relative mt-2 h-2.5 rounded-full bg-black/[0.08]">
+              <div
+                className="h-full rounded-full bg-[#5068e7]"
+                style={{ width: `${Math.max(rate > 0 ? 3 : 0, barWidth)}%` }}
+              />
+              <span
+                className="absolute top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-[#d29a13] shadow-[0_0_0_3px_rgba(210,154,19,0.15)]"
+                style={{ left: `${targetLeft}%` }}
+              />
+            </div>
+            {!compact ? (
+              <p className="mt-2 truncate text-xs text-black/52">
+                {formatNumber(item.cohort?.retained ?? 0)} retained / {formatNumber(item.cohort?.cohort ?? 0)} cohort
+              </p>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function SignalList({
   empty,
   items,
@@ -1460,6 +1675,97 @@ function SignalList({
         />
       ))}
     </div>
+  );
+}
+
+function EmailStatusBars({
+  emails,
+  onInspect,
+}: {
+  emails: GrowthDashboardData["emails"]["by_type"];
+  onInspect?: (email: GrowthDashboardData["emails"]["by_type"][number]) => void;
+}) {
+  const max = Math.max(...emails.map((email) => email.count), 1);
+
+  if (!emails.length) {
+    return (
+      <QuietState
+        icon={AlertTriangle}
+        title="No lifecycle email rows"
+        detail="Loops and SendGrid activity will appear here after emails are recorded by the backend."
+        tone="warn"
+      />
+    );
+  }
+
+  return (
+    <div className="grid gap-2">
+      {emails.map((email) => (
+        <button
+          key={`${email.email_type}-${email.status}`}
+          type="button"
+          onClick={() => onInspect?.(email)}
+          className="rounded-lg border border-white/55 bg-white/40 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition duration-200 hover:-translate-y-0.5 hover:bg-white/60 hover:shadow-[0_16px_42px_rgba(80,104,231,0.12)]"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-black">{labelize(email.email_type)}</p>
+              <p className="mt-0.5 text-xs font-semibold uppercase tracking-[0.12em] text-black/44">{labelize(email.status)}</p>
+            </div>
+            <span className="shrink-0 text-sm font-semibold tabular-nums text-black">{formatNumber(email.count)}</span>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-black/[0.08]">
+            <div
+              className="h-full rounded-full"
+              style={{
+                backgroundColor: emailStatusColor(email.status),
+                width: `${Math.max(3, (email.count / max) * 100)}%`,
+              }}
+            />
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function EmailRecentStream({
+  emails,
+  onInspect,
+}: {
+  emails: GrowthDashboardData["emails"]["recent"];
+  onInspect: (detail: DetailView) => void;
+}) {
+  return (
+    <ScrollStack>
+      {emails.map((email) => (
+        <SignalRow
+          key={`${email.provider}-${email.email_type}-${email.created_at}`}
+          title={labelize(email.email_type)}
+          detail={`${labelize(email.provider)} / ${email.recipient_domain ?? "unknown domain"}`}
+          value={labelize(email.status)}
+          tone={email.status.toLowerCase().includes("fail") ? "warn" : "good"}
+          onClick={() => onInspect({
+            eyebrow: "Email send",
+            title: labelize(email.email_type),
+            rows: [
+              { label: "Provider", value: email.provider },
+              { label: "Status", value: email.status },
+              { label: "Recipient domain", value: email.recipient_domain ?? "unknown" },
+              { label: "Created", value: formatDateTime(email.created_at) },
+            ],
+          })}
+        />
+      ))}
+      {!emails.length ? (
+        <QuietState
+          icon={AlertTriangle}
+          title="No recent emails"
+          detail="The stream fills after lifecycle sends are recorded by the backend."
+          tone="warn"
+        />
+      ) : null}
+    </ScrollStack>
   );
 }
 
@@ -1675,6 +1981,10 @@ function ContentEditorModal({
 }) {
   const title = contentTitle(editor.type, editor.row);
   const rows = contentRows(editor.type, editor.row);
+  const showMedia = mediaContentTypes.has(editor.type);
+  const editorGridClass = showMedia
+    ? "grid min-h-0 gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]"
+    : "grid min-h-0 gap-4";
 
   async function submitForm(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1739,8 +2049,8 @@ function ContentEditorModal({
               <RefreshCw aria-hidden="true" className="animate-spin text-[#5068e7]" size={22} />
             </div>
           ) : editor.mode === "edit" ? (
-            <form onSubmit={submitForm} className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-              <MediaPreview row={editor.row} />
+            <form onSubmit={submitForm} className={editorGridClass}>
+              {showMedia ? <MediaPreview row={editor.row} /> : null}
               <div className="grid content-start gap-3">
                 <ContentEditFields row={editor.row} type={editor.type} />
                 <div className="flex justify-end gap-2 pt-1">
@@ -1763,8 +2073,8 @@ function ContentEditorModal({
               </div>
             </form>
           ) : (
-            <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-              <MediaPreview row={editor.row} />
+            <div className={editorGridClass}>
+              {showMedia ? <MediaPreview row={editor.row} /> : null}
               <div className="grid content-start gap-2">
                 {rows.map((row) => (
                   <div key={`${row.label}-${String(row.value)}`} className="grid gap-1 rounded-lg border border-white/55 bg-white/42 p-3 sm:grid-cols-[160px_minmax(0,1fr)]">
@@ -2044,21 +2354,18 @@ function contentEditFields(type: ContentKey, row: GrowthContentRow): EditFieldCo
     return [
       { name: "content", label: "Content", type: "textarea", value: row.content },
       { name: "author", label: "Author", value: row.author },
-      { name: "audio_file", label: "Audio URL or S3 path", value: row.audio_file },
     ];
   }
 
   if (type === "affirmations") {
     return [
       { name: "content", label: "Content", type: "textarea", value: row.content },
-      { name: "audio_file", label: "Audio URL or S3 path", value: row.audio_file },
     ];
   }
 
   return [
     { name: "jounral_name", label: "Journal name", value: row.jounral_name },
     { name: "cat_id", label: "Category ID", type: "number", value: row.cat_id },
-    { name: "file", label: "Recording file", value: row.file },
     { name: "type", label: "Type", value: row.type },
     { name: "user_id", label: "User ID", type: "number", value: row.user_id },
   ];
@@ -2079,11 +2386,7 @@ function contentUploadFields(type: ContentKey) {
     ];
   }
 
-  if (type === "quotes" || type === "affirmations") {
-    return [{ name: "audio_file_upload", label: "Replace audio", accept: "audio/*" }];
-  }
-
-  return [{ name: "recording_file", label: "Replace recording", accept: "audio/*" }];
+  return [];
 }
 
 function formatDetailValue(value: string | number | boolean | null | undefined) {
@@ -2109,6 +2412,14 @@ function signalToneClass(tone: "neutral" | "good" | "warn") {
   return "text-black";
 }
 
+function emailStatusColor(status: string) {
+  const normalized = status.toLowerCase();
+  if (normalized.includes("fail") || normalized.includes("bounce") || normalized.includes("spam")) return "#f45253";
+  if (normalized.includes("open") || normalized.includes("click")) return "#5068e7";
+  if (normalized.includes("sent") || normalized.includes("deliver")) return "#209d13";
+  return "#d29a13";
+}
+
 function severityDotClass(severity: string) {
   if (severity === "high") return "bg-[#f45253]";
   if (severity === "medium") return "bg-[#f9bc2c]";
@@ -2131,6 +2442,15 @@ function formatDateTime(value: string) {
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
+  }).format(date);
+}
+
+function formatChartDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
   }).format(date);
 }
 

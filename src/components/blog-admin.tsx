@@ -126,9 +126,9 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
   }
 
   return (
-    <div className="grid h-full min-h-0 overflow-hidden rounded-lg border border-black/10 bg-white/[0.82] shadow-[0_14px_44px_rgba(0,0,0,0.045)] lg:grid-cols-[360px_1fr]">
-      <aside className="flex min-h-0 flex-col border-b border-black/10 bg-[#f8f6ef] lg:border-b-0 lg:border-r">
-        <div className="flex items-center justify-between gap-3 border-b border-black/10 p-4">
+    <div className="grid h-full min-h-0 overflow-hidden rounded-lg border border-white/55 bg-white/[0.42] shadow-[0_24px_80px_rgba(30,32,50,0.09),inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl lg:grid-cols-[360px_1fr]">
+      <aside className="flex min-h-0 flex-col border-b border-white/55 bg-white/[0.26] backdrop-blur-xl lg:border-b-0 lg:border-r lg:border-white/55">
+        <div className="flex items-center justify-between gap-3 border-b border-white/55 bg-white/[0.18] p-4">
           <div>
             <h2 className="text-sm font-semibold text-black">Runtime Articles</h2>
             <p className="mt-1 text-xs text-muted">{articles.length} editable</p>
@@ -136,7 +136,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="min-h-10 rounded-lg border border-[#cbd5e1] px-3 text-xs font-medium transition hover:border-[#64748b]"
+            className="min-h-10 rounded-full border border-white/65 bg-white/45 px-3 text-xs font-semibold text-black transition duration-200 hover:-translate-y-0.5 hover:bg-white/72 hover:shadow-[0_14px_34px_rgba(80,104,231,0.12)]"
           >
             Refresh
           </button>
@@ -150,10 +150,10 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                   type="button"
                   onClick={() => selectArticle(article)}
                   className={[
-                    "rounded-lg border p-3 text-left transition",
+                    "rounded-lg border p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition duration-200",
                     selectedSlug === article.slug
-                      ? "border-black bg-white shadow-sm"
-                    : "border-black/10 bg-white/[0.62] hover:border-black/30",
+                      ? "border-white/85 bg-white/78 shadow-[0_16px_42px_rgba(80,104,231,0.13)]"
+                    : "border-white/45 bg-white/[0.36] hover:-translate-y-0.5 hover:border-white/75 hover:bg-white/[0.62] hover:shadow-[0_12px_32px_rgba(80,104,231,0.10)]",
                   ].join(" ")}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -161,7 +161,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                       {article.title}
                     </span>
                     {article.promoted ? (
-                      <span className="shrink-0 rounded-md bg-[#111827] px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white">
+                      <span className="shrink-0 rounded-full bg-black px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white shadow-[0_10px_24px_rgba(0,0,0,0.16)]">
                         Promoted
                       </span>
                     ) : null}
@@ -185,7 +185,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
       <section className="min-h-0 min-w-0">
         {selected ? (
           <div className="flex h-full min-h-0 flex-col">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/10 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/55 bg-white/[0.18] p-4">
               <div className="min-w-0">
                 <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted">
                   /blog/{selected.slug}
@@ -199,7 +199,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                   <Link
                     href={`/blog/${selected.slug}`}
                     target="_blank"
-                    className="inline-flex min-h-10 items-center rounded-lg border border-[#cbd5e1] px-4 text-sm font-medium transition hover:border-[#64748b]"
+                    className="inline-flex min-h-10 items-center rounded-full border border-white/65 bg-white/45 px-4 text-sm font-semibold text-black transition duration-200 hover:-translate-y-0.5 hover:bg-white/72 hover:shadow-[0_14px_34px_rgba(80,104,231,0.12)]"
                   >
                     View
                   </Link>
@@ -207,7 +207,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                 <button
                   type="button"
                   onClick={deleteArticle}
-                  className="min-h-10 rounded-lg border border-[#f45253]/40 px-4 text-sm font-medium text-[#b42324] transition hover:border-[#b42324]"
+                  className="min-h-10 rounded-full border border-[#f45253]/35 bg-white/38 px-4 text-sm font-semibold text-[#b42324] transition duration-200 hover:-translate-y-0.5 hover:bg-[#fff3f3] hover:shadow-[0_14px_34px_rgba(244,82,83,0.12)]"
                 >
                   Delete
                 </button>
@@ -215,7 +215,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                   type="button"
                   onClick={saveArticle}
                   disabled={saveState === "saving"}
-                  className="min-h-10 rounded-lg bg-[#111827] px-5 text-sm font-medium text-white transition hover:bg-[#263244] disabled:opacity-55"
+                  className="min-h-10 rounded-full bg-black px-5 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#292929] hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:opacity-55"
                 >
                   {saveState === "saving" ? "Saving" : "Save"}
                 </button>
@@ -228,7 +228,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                   <input
                     value={draft.title}
                     onChange={(event) => updateDraft("title", event.target.value)}
-                    className="min-h-12 w-full rounded-lg border border-black/10 bg-white px-3 text-sm outline-none transition focus:border-black"
+                    className="min-h-12 w-full rounded-lg border border-white/65 bg-white/50 px-3 text-sm text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition focus:border-[#5068e7] focus:bg-white/78"
                   />
                 </Field>
                 <Field label="Description">
@@ -237,7 +237,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                     onChange={(event) =>
                       updateDraft("description", event.target.value)
                     }
-                    className="min-h-24 w-full rounded-lg border border-black/10 bg-white p-3 text-sm leading-6 outline-none transition focus:border-black"
+                    className="min-h-24 w-full rounded-lg border border-white/65 bg-white/50 p-3 text-sm leading-6 text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition focus:border-[#5068e7] focus:bg-white/78"
                   />
                 </Field>
                 <Field label="Meta description">
@@ -246,7 +246,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                     onChange={(event) =>
                       updateDraft("metaDescription", event.target.value)
                     }
-                    className="min-h-20 w-full rounded-lg border border-black/10 bg-white p-3 text-sm leading-6 outline-none transition focus:border-black"
+                    className="min-h-20 w-full rounded-lg border border-white/65 bg-white/50 p-3 text-sm leading-6 text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition focus:border-[#5068e7] focus:bg-white/78"
                   />
                 </Field>
                 <Field label="Markdown">
@@ -254,7 +254,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                     value={draft.content}
                     onChange={(event) => updateDraft("content", event.target.value)}
                     spellCheck
-                    className="min-h-[34rem] w-full rounded-lg border border-black/10 bg-white p-4 font-mono text-sm leading-6 outline-none transition focus:border-black"
+                    className="min-h-[34rem] w-full rounded-lg border border-white/65 bg-white/50 p-4 font-mono text-sm leading-6 text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition focus:border-[#5068e7] focus:bg-white/78"
                   />
                 </Field>
               </div>
@@ -275,21 +275,21 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                     type="date"
                     value={draft.date}
                     onChange={(event) => updateDraft("date", event.target.value)}
-                    className="min-h-12 w-full rounded-lg border border-black/10 bg-white px-3 text-sm outline-none transition focus:border-black"
+                    className="min-h-12 w-full rounded-lg border border-white/65 bg-white/50 px-3 text-sm text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition focus:border-[#5068e7] focus:bg-white/78"
                   />
                 </Field>
                 <Field label="Category">
                   <input
                     value={draft.category}
                     onChange={(event) => updateDraft("category", event.target.value)}
-                    className="min-h-12 w-full rounded-lg border border-black/10 bg-white px-3 text-sm outline-none transition focus:border-black"
+                    className="min-h-12 w-full rounded-lg border border-white/65 bg-white/50 px-3 text-sm text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition focus:border-[#5068e7] focus:bg-white/78"
                   />
                 </Field>
                 <Field label="Tags">
                   <textarea
                     value={draft.tags}
                     onChange={(event) => updateDraft("tags", event.target.value)}
-                    className="min-h-24 w-full rounded-lg border border-black/10 bg-white p-3 text-sm leading-6 outline-none transition focus:border-black"
+                    className="min-h-24 w-full rounded-lg border border-white/65 bg-white/50 p-3 text-sm leading-6 text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition focus:border-[#5068e7] focus:bg-white/78"
                     placeholder="One tag per line"
                   />
                 </Field>
@@ -299,7 +299,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                     onChange={(event) =>
                       updateDraft("featuredImage", event.target.value)
                     }
-                    className="min-h-12 w-full rounded-lg border border-black/10 bg-white px-3 text-sm outline-none transition focus:border-black"
+                    className="min-h-12 w-full rounded-lg border border-white/65 bg-white/50 px-3 text-sm text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition focus:border-[#5068e7] focus:bg-white/78"
                   />
                 </Field>
                 <Field label="Featured image alt">
@@ -308,23 +308,23 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                     onChange={(event) =>
                       updateDraft("featuredImageAlt", event.target.value)
                     }
-                    className="min-h-12 w-full rounded-lg border border-black/10 bg-white px-3 text-sm outline-none transition focus:border-black"
+                    className="min-h-12 w-full rounded-lg border border-white/65 bg-white/50 px-3 text-sm text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition focus:border-[#5068e7] focus:bg-white/78"
                   />
                 </Field>
                 <Field label="Author">
                   <input
                     value={draft.author}
                     onChange={(event) => updateDraft("author", event.target.value)}
-                    className="min-h-12 w-full rounded-lg border border-black/10 bg-white px-3 text-sm outline-none transition focus:border-black"
+                    className="min-h-12 w-full rounded-lg border border-white/65 bg-white/50 px-3 text-sm text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition focus:border-[#5068e7] focus:bg-white/78"
                   />
                 </Field>
                 {message ? (
                   <div
                     className={[
-                      "rounded-lg border p-3 text-sm",
+                      "rounded-lg border p-3 text-sm font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]",
                       saveState === "error"
                         ? "border-[#f45253]/40 bg-[#fff2f2] text-[#b42324]"
-                        : "border-[#d9dee8] bg-[#f8fafc] text-muted",
+                        : "border-white/55 bg-white/42 text-black/58",
                     ].join(" ")}
                   >
                     {message}
@@ -410,7 +410,7 @@ function Field({
 }) {
   return (
     <label className="grid gap-2">
-      <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
+      <span className="text-xs font-semibold uppercase tracking-[0.14em] text-black/48">
         {label}
       </span>
       {children}
@@ -428,8 +428,8 @@ function ToggleField({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-[#d9dee8] bg-[#f8fafc] px-3">
-      <span className="text-sm font-medium text-black">{label}</span>
+    <label className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-white/60 bg-white/42 px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+      <span className="text-sm font-semibold text-black">{label}</span>
       <input
         type="checkbox"
         checked={checked}

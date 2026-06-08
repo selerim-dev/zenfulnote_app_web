@@ -120,11 +120,11 @@ function loginForm(error?: string) {
     <section className="w-full rounded-lg border border-white/60 bg-white/[0.56] p-5 shadow-[0_28px_95px_rgba(80,104,231,0.16),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-2xl sm:p-6">
       <div className="flex items-center gap-3 border-b border-white/60 pb-5">
         <Image
-          src="/images/brand/logotype-dark.png"
+          src="/images/brand/wordmark-white-large.png"
           alt="ZenfulNote"
-          width={132}
-          height={30}
-          className="h-auto w-32 [filter:brightness(0)]"
+          width={154}
+          height={38}
+          className="h-auto w-[116px] [filter:brightness(0)]"
           priority
         />
         <span className="rounded-full border border-white/60 bg-white/46 px-3 py-1 text-xs font-semibold text-black/68 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
