@@ -126,8 +126,8 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
   }
 
   return (
-    <div className="grid min-h-[calc(100dvh-12rem)] overflow-hidden rounded-[18px] border border-black/10 bg-white shadow-[0_24px_100px_rgba(0,0,0,0.08)] lg:grid-cols-[360px_1fr]">
-      <aside className="border-b border-black/10 bg-[#f8f6ef] lg:border-b-0 lg:border-r">
+    <div className="grid h-full min-h-0 overflow-hidden rounded-lg border border-black/10 bg-white/[0.82] shadow-[0_14px_44px_rgba(0,0,0,0.045)] lg:grid-cols-[360px_1fr]">
+      <aside className="flex min-h-0 flex-col border-b border-black/10 bg-[#f8f6ef] lg:border-b-0 lg:border-r">
         <div className="flex items-center justify-between gap-3 border-b border-black/10 p-4">
           <div>
             <h2 className="text-sm font-semibold text-black">Runtime Articles</h2>
@@ -136,12 +136,12 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="min-h-10 rounded-full border border-black/15 px-3 text-xs font-medium transition hover:border-black"
+            className="min-h-10 rounded-lg border border-[#cbd5e1] px-3 text-xs font-medium transition hover:border-[#64748b]"
           >
             Refresh
           </button>
         </div>
-        <div className="max-h-[calc(100dvh-17rem)] overflow-y-auto p-3">
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {sortedArticles.length ? (
             <div className="grid gap-2">
               {sortedArticles.map((article) => (
@@ -153,7 +153,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                     "rounded-lg border p-3 text-left transition",
                     selectedSlug === article.slug
                       ? "border-black bg-white shadow-sm"
-                      : "border-black/10 bg-white/62 hover:border-black/30",
+                    : "border-black/10 bg-white/[0.62] hover:border-black/30",
                   ].join(" ")}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -161,7 +161,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                       {article.title}
                     </span>
                     {article.promoted ? (
-                      <span className="shrink-0 rounded-full bg-black px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white">
+                      <span className="shrink-0 rounded-md bg-[#111827] px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white">
                         Promoted
                       </span>
                     ) : null}
@@ -182,7 +182,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
         </div>
       </aside>
 
-      <section className="min-w-0">
+      <section className="min-h-0 min-w-0">
         {selected ? (
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/10 p-4">
@@ -199,7 +199,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                   <Link
                     href={`/blog/${selected.slug}`}
                     target="_blank"
-                    className="inline-flex min-h-10 items-center rounded-full border border-black/15 px-4 text-sm font-medium transition hover:border-black"
+                    className="inline-flex min-h-10 items-center rounded-lg border border-[#cbd5e1] px-4 text-sm font-medium transition hover:border-[#64748b]"
                   >
                     View
                   </Link>
@@ -207,7 +207,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                 <button
                   type="button"
                   onClick={deleteArticle}
-                  className="min-h-10 rounded-full border border-[#f45253]/40 px-4 text-sm font-medium text-[#b42324] transition hover:border-[#b42324]"
+                  className="min-h-10 rounded-lg border border-[#f45253]/40 px-4 text-sm font-medium text-[#b42324] transition hover:border-[#b42324]"
                 >
                   Delete
                 </button>
@@ -215,7 +215,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                   type="button"
                   onClick={saveArticle}
                   disabled={saveState === "saving"}
-                  className="min-h-10 rounded-full bg-black px-5 text-sm font-medium text-white transition hover:bg-black/82 disabled:opacity-55"
+                  className="min-h-10 rounded-lg bg-[#111827] px-5 text-sm font-medium text-white transition hover:bg-[#263244] disabled:opacity-55"
                 >
                   {saveState === "saving" ? "Saving" : "Save"}
                 </button>
@@ -324,7 +324,7 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                       "rounded-lg border p-3 text-sm",
                       saveState === "error"
                         ? "border-[#f45253]/40 bg-[#fff2f2] text-[#b42324]"
-                        : "border-black/10 bg-[#f8f6ef] text-muted",
+                        : "border-[#d9dee8] bg-[#f8fafc] text-muted",
                     ].join(" ")}
                   >
                     {message}
@@ -428,7 +428,7 @@ function ToggleField({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-black/10 bg-[#f8f6ef] px-3">
+    <label className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-[#d9dee8] bg-[#f8fafc] px-3">
       <span className="text-sm font-medium text-black">{label}</span>
       <input
         type="checkbox"
