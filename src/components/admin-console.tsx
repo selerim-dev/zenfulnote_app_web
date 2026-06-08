@@ -8,6 +8,7 @@ import {
   BarChart3,
   BookOpen,
   CalendarDays,
+  ChevronDown,
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
@@ -19,6 +20,8 @@ import {
   ImageIcon,
   LayoutDashboard,
   Mail,
+  Maximize2,
+  MessageCircle,
   Music,
   PenLine,
   PlayCircle,
@@ -76,6 +79,11 @@ type DetailView = {
   eyebrow?: string;
   title: string;
   description?: string | null;
+  chart?: {
+    color: string;
+    data: GrowthTrendPoint[];
+    value: string;
+  };
   rows?: Array<{ label: string; value: string | number | boolean | null | undefined }>;
 };
 
@@ -135,6 +143,7 @@ export function AdminConsole({
   );
   const [auditRunning, setAuditRunning] = useState(false);
   const [detailView, setDetailView] = useState<DetailView | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     if (!toast || toast.sticky) return;
@@ -295,12 +304,11 @@ export function AdminConsole({
                   void refreshDashboard({ days });
                 }}
               />
-              <button
-                type="button"
-                onClick={runAudit}
-                disabled={auditRunning}
-                className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/60 bg-white/50 px-3 text-sm font-semibold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] transition duration-200 hover:-translate-y-0.5 hover:border-white/85 hover:bg-white/75 hover:shadow-[0_16px_42px_rgba(80,104,231,0.16)] disabled:cursor-wait disabled:opacity-65"
-              >
+              <HeaderActionButton onClick={() => setChatOpen(true)}>
+                <MessageCircle aria-hidden="true" size={16} strokeWidth={1.9} />
+                <span className="hidden sm:inline">Ask</span>
+              </HeaderActionButton>
+              <HeaderActionButton onClick={runAudit} disabled={auditRunning}>
                 <RefreshCw
                   aria-hidden="true"
                   size={16}
@@ -308,7 +316,7 @@ export function AdminConsole({
                   className={auditRunning ? "animate-spin" : undefined}
                 />
                 <span className="hidden sm:inline">{auditRunning ? "Auditing" : "Audit"}</span>
-              </button>
+              </HeaderActionButton>
               <form action="/api/admin/session/logout" method="post">
                 <button className="min-h-10 rounded-full bg-black px-3 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(0,0,0,0.18)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#292929] hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)] sm:px-4">
                   Log out
@@ -367,6 +375,7 @@ export function AdminConsole({
       </div>
       {toast ? <ToastNotice toast={toast} onClose={() => setToast(null)} /> : null}
       {detailView ? <DetailModal detail={detailView} onClose={() => setDetailView(null)} /> : null}
+      {chatOpen ? <GrowthChatModal dashboard={dashboard} onClose={() => setChatOpen(false)} /> : null}
     </main>
   );
 }
@@ -396,7 +405,7 @@ function OverviewPage({
   const dailyUsers = activation.daily_request_users ?? 0;
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden">
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2.5 overflow-hidden">
       <div className="flex shrink-0 gap-2 overflow-x-auto md:grid md:grid-cols-3 xl:grid-cols-6">
         <MetricTile
           icon={Gauge}
@@ -488,40 +497,28 @@ function OverviewPage({
 
       <div className="grid min-h-0 gap-3 overflow-hidden xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
       <Panel title="App Pulse" eyebrow={`${dashboard.period.days} day window`} icon={TrendingUp}>
-        <div className="grid h-full min-h-0 gap-3 overflow-y-auto pr-1 xl:overflow-hidden">
+        <div className="grid h-full min-h-0 gap-2.5 overflow-y-auto pr-1">
           <div className="grid min-h-0 gap-3 md:grid-cols-2">
             <ChartBlock
               title="Daily active users"
               value={formatNumber(users.active_7d)}
               data={dauTrend}
               color="#5068e7"
-              onClick={() => onInspect({
-                eyebrow: "Trend",
-                title: "Daily active users",
-                rows: trendSummaryRows(dauTrend),
-              })}
+              onClick={() => onInspect(chartDetail("Daily active users", formatNumber(users.active_7d), dauTrend, "#5068e7"))}
             />
             <ChartBlock
               title="Request volume"
               value={formatNumber(dashboard.activity?.total_requests ?? 0)}
               data={requestTrend}
               color="#209d13"
-              onClick={() => onInspect({
-                eyebrow: "Trend",
-                title: "Backend request volume",
-                rows: trendSummaryRows(requestTrend),
-              })}
+              onClick={() => onInspect(chartDetail("Backend request volume", formatNumber(dashboard.activity?.total_requests ?? 0), requestTrend, "#209d13"))}
             />
             <ChartBlock
               title="Growth events"
               value={formatNumber(dashboard.events.total)}
               data={eventTrend}
               color="#ea6fcf"
-              onClick={() => onInspect({
-                eyebrow: "Trend",
-                title: "First-party growth events",
-                rows: trendSummaryRows(eventTrend),
-              })}
+              onClick={() => onInspect(chartDetail("First-party growth events", formatNumber(dashboard.events.total), eventTrend, "#ea6fcf"))}
             />
             <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-white/55 bg-white/42 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)]">
               <div className="flex items-start justify-between gap-3">
@@ -543,26 +540,46 @@ function OverviewPage({
         </div>
       </Panel>
 
-      <div className="grid min-h-0 gap-3 lg:grid-cols-2 xl:grid-cols-1">
-        <Panel title="Operator Queue" eyebrow="Highest priority" icon={Sparkles}>
-          <ScrollStack>
-            {dashboard.health.todos.slice(0, 7).map((todo) => (
-              <TodoRow key={`${todo.title}-${todo.action}`} todo={todo} />
-            ))}
-            {!dashboard.health.todos.length ? (
-              <QuietState
-                icon={CheckCircle2}
-                title="No urgent tasks"
-                detail="The current growth checks are clear for this period."
-                tone="good"
-              />
-            ) : null}
-          </ScrollStack>
-        </Panel>
+      <div className="grid min-h-0 gap-3 lg:grid-cols-2 xl:grid-cols-1 xl:grid-rows-[minmax(0,0.58fr)_minmax(0,0.42fr)]">
         <Panel title="Conversion Shape" eyebrow="Current funnel" icon={BarChart3}>
-          <ScrollStack>
-            <FunnelBars funnel={dashboard.funnel} />
-          </ScrollStack>
+          <button
+            type="button"
+            onClick={() => onInspect({
+              eyebrow: "Current funnel",
+              title: "Conversion Shape",
+              rows: dashboard.funnel.map((item) => ({ label: item.label, value: item.count })),
+            })}
+            className="h-full w-full text-left"
+          >
+            <ScrollStack>
+              <FunnelBars funnel={dashboard.funnel} />
+            </ScrollStack>
+          </button>
+        </Panel>
+        <Panel title="Operator Queue" eyebrow="Highest priority" icon={Sparkles}>
+          <button
+            type="button"
+            onClick={() => onInspect({
+              eyebrow: "Highest priority",
+              title: "Operator Queue",
+              rows: dashboard.health.todos.map((todo) => ({ label: todo.title, value: todo.action })),
+            })}
+            className="h-full w-full text-left"
+          >
+            <ScrollStack>
+              {dashboard.health.todos.slice(0, 7).map((todo) => (
+                <TodoRow key={`${todo.title}-${todo.action}`} todo={todo} />
+              ))}
+              {!dashboard.health.todos.length ? (
+                <QuietState
+                  icon={CheckCircle2}
+                  title="No urgent tasks"
+                  detail="The current growth checks are clear for this period."
+                  tone="good"
+                />
+              ) : null}
+            </ScrollStack>
+          </button>
         </Panel>
       </div>
       </div>
@@ -619,7 +636,7 @@ function RetentionPage({
             value={formatNumber(dashboard.summary.users.active_7d)}
             data={dauTrend}
             color="#5068e7"
-            onClick={() => onInspect({ eyebrow: "Trend", title: "Daily active users", rows: trendSummaryRows(dauTrend) })}
+            onClick={() => onInspect(chartDetail("Daily active users", formatNumber(dashboard.summary.users.active_7d), dauTrend, "#5068e7"))}
           />
         </div>
       </Panel>
@@ -641,11 +658,7 @@ function RetentionPage({
             value={formatNumber(dashboard.activity?.total_requests ?? 0)}
             data={requestTrend}
             color="#111111"
-            onClick={() => onInspect({
-              eyebrow: "Trend",
-              title: "Backend activity requests",
-              rows: trendSummaryRows(requestTrend),
-            })}
+            onClick={() => onInspect(chartDetail("Backend activity requests", formatNumber(dashboard.activity?.total_requests ?? 0), requestTrend, "#111111"))}
           />
         </Panel>
       </div>
@@ -720,11 +733,7 @@ function EventsPage({
             value={formatNumber(dashboard.events.total)}
             data={dashboard.events.daily}
             color="#ea6fcf"
-            onClick={() => onInspect({
-              eyebrow: "Trend",
-              title: "Daily growth events",
-              rows: trendSummaryRows(dashboard.events.daily),
-            })}
+            onClick={() => onInspect(chartDetail("Daily growth events", formatNumber(dashboard.events.total), dashboard.events.daily, "#ea6fcf"))}
           />
         </Panel>
         <div className="grid min-h-0 gap-3 lg:grid-cols-2">
@@ -1198,16 +1207,16 @@ function Panel({
 }) {
   return (
     <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-white/55 bg-white/[0.42] shadow-[0_18px_55px_rgba(30,32,50,0.08),inset_0_1px_0_rgba(255,255,255,0.78)] backdrop-blur-2xl transition duration-200 hover:-translate-y-0.5 hover:border-white/70 hover:shadow-[0_28px_90px_rgba(80,104,231,0.13),inset_0_1px_0_rgba(255,255,255,0.9)]">
-      <div className="flex items-start justify-between gap-3 border-b border-white/55 bg-white/[0.18] px-4 py-3">
-        <div className="min-w-0">
-          <p className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-black/50">
+      <div className="flex items-center justify-between gap-3 border-b border-white/55 bg-white/[0.18] px-3 py-2">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <h2 className="truncate text-base font-semibold tracking-tight text-black">{title}</h2>
+          <span className="hidden truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-black/42 sm:inline">
             {eyebrow}
-          </p>
-          <h2 className="mt-0.5 truncate text-lg font-semibold tracking-tight text-black">{title}</h2>
+          </span>
         </div>
-        <Icon aria-hidden="true" className="shrink-0 text-[#5068e7]" size={20} strokeWidth={1.9} />
+        <Icon aria-hidden="true" className="shrink-0 text-[#5068e7]" size={17} strokeWidth={1.9} />
       </div>
-      <div className="min-h-0 overflow-hidden p-3">{children}</div>
+      <div className="min-h-0 overflow-hidden p-2.5">{children}</div>
     </section>
   );
 }
@@ -1255,27 +1264,49 @@ function PeriodControl({
   onChange: (days: number) => void;
 }) {
   return (
-    <div className="hidden items-center gap-1 rounded-full border border-white/55 bg-white/34 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] backdrop-blur-xl lg:flex">
-      <span className="grid size-8 place-items-center rounded-full text-black/48">
-        <CalendarDays aria-hidden="true" size={15} strokeWidth={1.9} />
-      </span>
-      {periodOptions.map((option) => (
-        <button
-          key={option}
-          type="button"
-          onClick={() => onChange(option)}
-          disabled={loading && option === days}
-          className={[
-            "min-h-8 rounded-full px-2.5 text-xs font-semibold tabular-nums transition duration-200",
-            days === option
-              ? "bg-black text-white shadow-[0_10px_24px_rgba(0,0,0,0.16)]"
-              : "text-black/58 hover:-translate-y-0.5 hover:bg-white/72 hover:text-black hover:shadow-[0_12px_28px_rgba(80,104,231,0.12)]",
-          ].join(" ")}
-        >
-          {option}d
-        </button>
-      ))}
-    </div>
+    <label className="relative inline-flex min-h-10 items-center gap-2 rounded-full border border-white/60 bg-white/50 px-3 text-sm font-semibold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:border-white/85 hover:bg-white/75 hover:shadow-[0_16px_42px_rgba(80,104,231,0.16)]">
+      <CalendarDays aria-hidden="true" size={16} strokeWidth={1.9} className="text-black/58" />
+      <span className="sr-only">Dashboard window</span>
+      <select
+        value={days}
+        disabled={loading}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="cursor-pointer appearance-none bg-transparent py-0 pl-0 pr-5 text-sm font-semibold tabular-nums text-black outline-none disabled:cursor-wait disabled:opacity-60"
+      >
+        {periodOptions.map((option) => (
+          <option key={option} value={option}>
+            {option}d
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        aria-hidden="true"
+        size={14}
+        strokeWidth={2}
+        className="pointer-events-none absolute right-3 text-black/48"
+      />
+    </label>
+  );
+}
+
+function HeaderActionButton({
+  children,
+  disabled,
+  onClick,
+}: {
+  children: React.ReactNode;
+  disabled?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/60 bg-white/50 px-3 text-sm font-semibold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] transition duration-200 hover:-translate-y-0.5 hover:border-white/85 hover:bg-white/75 hover:shadow-[0_16px_42px_rgba(80,104,231,0.16)] disabled:cursor-wait disabled:opacity-65"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -1298,18 +1329,18 @@ function MetricTile({
     <>
       <div className="flex items-center justify-between gap-2">
         <p className="truncate text-xs font-semibold uppercase tracking-[0.12em] text-black/50">{label}</p>
-        <span className={["grid size-8 place-items-center rounded-full", toneClass(tone)].join(" ")}>
-          <Icon aria-hidden="true" size={16} strokeWidth={1.9} />
+        <span className={["grid size-7 place-items-center rounded-full", toneClass(tone)].join(" ")}>
+          <Icon aria-hidden="true" size={14} strokeWidth={1.9} />
         </span>
       </div>
-      <p className="mt-2 truncate text-2xl font-semibold tabular-nums text-black">
+      <p className="mt-1.5 truncate text-xl font-semibold tabular-nums text-black">
         {typeof value === "number" ? formatNumber(value) : value}
       </p>
-      <p className="mt-0.5 truncate text-sm text-black/56">{detail}</p>
+      <p className="truncate text-xs text-black/56">{detail}</p>
     </>
   );
 
-  const className = "min-h-24 w-44 shrink-0 rounded-lg border border-white/55 bg-white/42 p-3 text-left shadow-[0_14px_44px_rgba(30,32,50,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl transition duration-200 hover:-translate-y-0.5 hover:border-white/75 hover:shadow-[0_24px_70px_rgba(80,104,231,0.16),inset_0_1px_0_rgba(255,255,255,0.95)] md:w-auto";
+  const className = "min-h-20 w-40 shrink-0 rounded-lg border border-white/55 bg-white/42 px-3 py-2.5 text-left shadow-[0_14px_44px_rgba(30,32,50,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl transition duration-200 hover:-translate-y-0.5 hover:border-white/75 hover:shadow-[0_24px_70px_rgba(80,104,231,0.16),inset_0_1px_0_rgba(255,255,255,0.95)] md:w-auto";
 
   if (onClick) {
     return (
@@ -1341,10 +1372,11 @@ function ChartBlock({
 }) {
   const content = (
     <>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{title}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-black">{value}</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="truncate text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{title}</p>
+        <div className="flex shrink-0 items-center gap-2">
+          <p className="text-xl font-semibold tabular-nums text-black">{value}</p>
+          {onClick ? <Maximize2 aria-hidden="true" size={14} strokeWidth={1.9} className="text-black/34" /> : null}
         </div>
       </div>
       <div className="min-h-0">
@@ -1353,7 +1385,7 @@ function ChartBlock({
     </>
   );
 
-  const className = "grid h-full min-h-0 w-full grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-white/55 bg-white/42 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)]";
+  const className = "grid h-full min-h-0 w-full grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-white/55 bg-white/42 p-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)]";
 
   if (onClick) {
     return (
@@ -1370,7 +1402,15 @@ function ChartBlock({
   );
 }
 
-function LineChart({ color, data }: { color: string; data: GrowthTrendPoint[] }) {
+function LineChart({
+  color,
+  data,
+  size = "normal",
+}: {
+  color: string;
+  data: GrowthTrendPoint[];
+  size?: "normal" | "large";
+}) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const rawGradientId = useId();
   const gradientId = `chart-${rawGradientId.replace(/:/g, "")}`;
@@ -1391,7 +1431,7 @@ function LineChart({ color, data }: { color: string; data: GrowthTrendPoint[] })
 
   if (!points.length) {
     return (
-      <div className="grid h-full min-h-32 place-items-center text-sm font-medium text-black/48">
+      <div className={["grid h-full place-items-center text-sm font-medium text-black/48", size === "large" ? "min-h-[420px]" : "min-h-28"].join(" ")}>
         No trend data
       </div>
     );
@@ -1416,7 +1456,7 @@ function LineChart({ color, data }: { color: string; data: GrowthTrendPoint[] })
   return (
     <svg
       viewBox="0 0 320 128"
-      className="h-full min-h-32 w-full"
+      className={["h-full w-full", size === "large" ? "min-h-[420px]" : "min-h-28"].join(" ")}
       role="img"
       aria-label="Trend chart"
       onPointerMove={handlePointerMove}
@@ -1929,15 +1969,15 @@ function DetailModal({ detail, onClose }: { detail: DetailView; onClose: () => v
       onClick={onClose}
     >
       <section
-        className="max-h-[82dvh] w-full max-w-2xl overflow-hidden rounded-lg border border-white/65 bg-white/68 shadow-[0_34px_120px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl"
+        className="grid max-h-[90dvh] w-full max-w-6xl grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-white/65 bg-white/72 shadow-[0_34px_120px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-white/60 bg-white/28 px-5 py-4">
+        <div className="flex items-center justify-between gap-4 border-b border-white/60 bg-white/28 px-5 py-3">
           <div className="min-w-0">
             {detail.eyebrow ? (
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-black/50">{detail.eyebrow}</p>
             ) : null}
-            <h2 className="mt-1 text-2xl font-semibold tracking-tight text-black">{detail.title}</h2>
+            <h2 className="mt-0.5 truncate text-2xl font-semibold tracking-tight text-black">{detail.title}</h2>
           </div>
           <button
             type="button"
@@ -1948,20 +1988,151 @@ function DetailModal({ detail, onClose }: { detail: DetailView; onClose: () => v
             <X aria-hidden="true" size={16} strokeWidth={2} />
           </button>
         </div>
-        <div className="max-h-[calc(82dvh-86px)] overflow-y-auto p-5">
+        <div className="min-h-0 overflow-y-auto p-4">
           {detail.description ? (
             <p className="mb-4 whitespace-pre-wrap text-sm leading-6 text-black/68">{detail.description}</p>
           ) : null}
+          {detail.chart ? (
+            <div className="mb-4 grid min-h-[48dvh] rounded-lg border border-white/60 bg-white/44 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Focused graph</p>
+                <p className="text-2xl font-semibold tabular-nums text-black">{detail.chart.value}</p>
+              </div>
+              <LineChart data={detail.chart.data} color={detail.chart.color} size="large" />
+            </div>
+          ) : null}
           {detail.rows?.length ? (
-            <div className="grid gap-2">
+            <div className={["grid gap-2", detail.chart ? "sm:grid-cols-4" : "sm:grid-cols-2 xl:grid-cols-3"].join(" ")}>
               {detail.rows.map((row) => (
-                <div key={`${row.label}-${String(row.value)}`} className="grid gap-1 rounded-lg border border-white/55 bg-white/42 p-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+                <div key={`${row.label}-${String(row.value)}`} className="grid gap-1 rounded-lg border border-white/55 bg-white/42 p-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{row.label}</p>
                   <p className="min-w-0 break-words text-sm font-semibold text-black">{formatDetailValue(row.value)}</p>
                 </div>
               ))}
             </div>
           ) : null}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+type ChatMessage = {
+  role: "assistant" | "user";
+  text: string;
+};
+
+function GrowthChatModal({
+  dashboard,
+  onClose,
+}: {
+  dashboard: GrowthDashboardData;
+  onClose: () => void;
+}) {
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      role: "assistant",
+      text: growthOpeningMessage(dashboard),
+    },
+  ]);
+  const suggestions = [
+    "What should we fix first?",
+    "Why is retention low?",
+    "What is happening with lifecycle email?",
+    "Which events are missing?",
+  ];
+
+  function submitQuestion(question: string) {
+    const trimmed = question.trim();
+    if (!trimmed) return;
+
+    setMessages((current) => [
+      ...current,
+      { role: "user", text: trimmed },
+      { role: "assistant", text: growthAnswer(trimmed, dashboard) },
+    ]);
+    setInput("");
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/24 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <section
+        className="grid h-[min(760px,90dvh)] w-full max-w-4xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-white/65 bg-white/74 shadow-[0_34px_120px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-4 border-b border-white/60 bg-white/28 px-5 py-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-black/50">Growth assistant</p>
+            <h2 className="mt-0.5 truncate text-2xl font-semibold tracking-tight text-black">Ask what to improve</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close growth assistant"
+            className="grid size-9 shrink-0 place-items-center rounded-full border border-white/65 bg-white/50 text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(0,0,0,0.16)]"
+          >
+            <X aria-hidden="true" size={16} strokeWidth={2} />
+          </button>
+        </div>
+
+        <div className="min-h-0 overflow-y-auto p-4">
+          <div className="grid gap-3">
+            {messages.map((message, index) => (
+              <div
+                key={`${message.role}-${index}`}
+                className={[
+                  "max-w-[82%] whitespace-pre-wrap rounded-lg border px-4 py-3 text-sm leading-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]",
+                  message.role === "assistant"
+                    ? "justify-self-start border-white/60 bg-white/50 text-black/72"
+                    : "justify-self-end border-black/10 bg-black text-white",
+                ].join(" ")}
+              >
+                {message.text}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="border-t border-white/60 bg-white/28 p-4">
+          <div className="mb-3 flex gap-2 overflow-x-auto">
+            {suggestions.map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                onClick={() => submitQuestion(suggestion)}
+                className="shrink-0 rounded-full border border-white/65 bg-white/45 px-3 py-2 text-xs font-semibold text-black transition hover:-translate-y-0.5 hover:bg-white/72 hover:shadow-[0_12px_30px_rgba(80,104,231,0.12)]"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+          <form
+            className="flex gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitQuestion(input);
+            }}
+          >
+            <input
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder="Ask about retention, churn, email, events, or revenue..."
+              className="min-h-11 min-w-0 flex-1 rounded-full border border-white/65 bg-white/58 px-4 text-sm text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition placeholder:text-black/35 focus:border-[#5068e7] focus:bg-white/78"
+            />
+            <button
+              type="submit"
+              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)]"
+            >
+              <Send aria-hidden="true" size={15} strokeWidth={1.9} />
+              Ask
+            </button>
+          </form>
         </div>
       </section>
     </div>
@@ -2264,6 +2435,87 @@ function trendSummaryRows(data: GrowthTrendPoint[]) {
     { label: "Total", value: total },
     { label: "Points", value: data.length },
   ];
+}
+
+function chartDetail(title: string, value: string, data: GrowthTrendPoint[], color: string): DetailView {
+  return {
+    eyebrow: "Expanded chart",
+    title,
+    chart: { color, data, value },
+    rows: trendSummaryRows(data),
+  };
+}
+
+function growthOpeningMessage(dashboard: GrowthDashboardData) {
+  const retention = dashboard.summary.users.retention;
+  const topTodo = dashboard.health.todos[0];
+  return [
+    `Health score is ${dashboard.health.score} (${titleCase(dashboard.health.status)}).`,
+    `D1/D7/D30 retention is ${formatPercent(retention.d1?.rate ?? 0)} / ${formatPercent(retention.d7?.rate ?? 0)} / ${formatPercent(retention.d30?.rate ?? 0)} against gold targets of ${retentionTargets.d1}% / ${retentionTargets.d7}% / ${retentionTargets.d30}%.`,
+    topTodo ? `Top fix: ${topTodo.title}. ${topTodo.action}` : "No urgent operator tasks are open for this window.",
+  ].join("\n\n");
+}
+
+function growthAnswer(question: string, dashboard: GrowthDashboardData) {
+  const normalized = question.toLowerCase();
+  const users = dashboard.summary.users;
+  const retention = users.retention;
+  const topTodo = dashboard.health.todos[0];
+  const missingEvents = dashboard.events.coverage.missing;
+  const activeUsers = funnelCount(dashboard, ["active_users"], ["active"]);
+  const purchases = funnelCount(dashboard, ["purchases"], ["purchase"]);
+
+  if (normalized.includes("retention") || normalized.includes("churn") || normalized.includes("return")) {
+    return [
+      `Retention is below target: D1 is ${formatPercent(retention.d1?.rate ?? 0)} vs ${retentionTargets.d1}%, D7 is ${formatPercent(retention.d7?.rate ?? 0)} vs ${retentionTargets.d7}%, and D30 is ${formatPercent(retention.d30?.rate ?? 0)} vs ${retentionTargets.d30}%.`,
+      "Near-term fix: instrument the missing onboarding/paywall events, then run one onboarding and one lifecycle experiment at a time so we can connect activation behavior to retention movement.",
+      `Active 7d users are ${formatNumber(users.active_7d)} out of ${formatNumber(users.total)} total users.`,
+    ].join("\n\n");
+  }
+
+  if (normalized.includes("email") || normalized.includes("sendgrid") || normalized.includes("loops") || normalized.includes("spam")) {
+    return [
+      `Email volume is ${formatNumber(dashboard.emails.total)} with a recorded failure rate of ${dashboard.emails.failure_rate}%.`,
+      dashboard.readiness?.integrations.sendgrid_api_key ? "SendGrid is configured." : "SendGrid is not marked configured.",
+      dashboard.readiness?.integrations.loops_api_key && dashboard.readiness?.integrations.loops_webhook_secret
+        ? "Loops is configured."
+        : "Loops is not fully configured, so lifecycle email automation is still the highest-confidence setup gap.",
+      "For spam specifically, the dashboard can show send/failure records, but inbox placement needs domain authentication and provider-level deliverability signals surfaced from SendGrid/Loops.",
+    ].join("\n\n");
+  }
+
+  if (normalized.includes("event") || normalized.includes("tracking") || normalized.includes("instrument")) {
+    return [
+      `Event coverage is ${dashboard.events.coverage.percent}% (${dashboard.events.coverage.tracked}/${dashboard.events.coverage.expected}).`,
+      missingEvents.length
+        ? `Missing events: ${missingEvents.slice(0, 8).join(", ")}${missingEvents.length > 8 ? ", ..." : ""}.`
+        : "All expected events appeared in this period.",
+      "If these flows exist in the app, ship or verify iOS instrumentation first; without that, retention and conversion analysis will stay blurry.",
+    ].join("\n\n");
+  }
+
+  if (normalized.includes("revenue") || normalized.includes("subscription") || normalized.includes("conversion") || normalized.includes("paywall")) {
+    return [
+      `Active subscriptions are ${formatNumber(dashboard.summary.subscriptions.active ?? 0)} with ${formatNumber(dashboard.summary.subscriptions.new_purchases ?? 0)} purchases in this window.`,
+      `The funnel currently shows ${formatNumber(activeUsers)} active users and ${formatNumber(purchases)} purchases.`,
+      "The next revenue fix is to complete paywall and purchase event coverage so trial starts, plan selections, purchase attempts, and completions can be compared cleanly.",
+    ].join("\n\n");
+  }
+
+  return [
+    `The most pressing dashboard signal is: ${topTodo ? `${topTodo.title}. ${topTodo.action}` : "no urgent operator task in this period."}`,
+    `Health score is ${dashboard.health.score}, event coverage is ${dashboard.events.coverage.percent}%, and D7 retention is ${formatPercent(retention.d7?.rate ?? 0)}.`,
+    "I would fix instrumentation and lifecycle setup first, then use the retention and funnel charts to choose one activation experiment and one email experiment.",
+  ].join("\n\n");
+}
+
+function funnelCount(dashboard: GrowthDashboardData, keys: string[], labelTerms: string[]) {
+  const match = dashboard.funnel.find((item) => {
+    const label = item.label.toLowerCase();
+    return keys.includes(item.key) || labelTerms.some((term) => label.includes(term));
+  });
+
+  return match?.count ?? 0;
 }
 
 function retentionDetail(label: string, cohort?: { cohort: number; retained: number; rate: number }): DetailView {
