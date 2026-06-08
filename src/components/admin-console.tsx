@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -43,6 +42,7 @@ import type {
 type AdminConsoleProps = {
   articles: AdminBlogArticle[];
   dashboard: GrowthDashboardData;
+  dashboardInitiallyLoaded?: boolean;
   dashboardError?: string | null;
   initialNotice?: Toast | null;
 };
@@ -63,6 +63,13 @@ type AdminPageKey =
   | "system";
 
 type ContentKey = "meditations" | "exercises" | "audio" | "affirmations" | "quotes" | "journals";
+
+type DetailView = {
+  eyebrow?: string;
+  title: string;
+  description?: string | null;
+  rows?: Array<{ label: string; value: string | number | boolean | null | undefined }>;
+};
 
 const pages: Array<{ key: AdminPageKey; label: string; icon: LucideIcon }> = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
@@ -85,17 +92,22 @@ const contentTabs: Array<{ key: ContentKey; label: string; icon: LucideIcon }> =
 
 export function AdminConsole({
   articles,
-  dashboard,
+  dashboard: initialDashboard,
+  dashboardInitiallyLoaded = true,
   dashboardError,
   initialNotice,
 }: AdminConsoleProps) {
-  const router = useRouter();
   const [activePage, setActivePage] = useState<AdminPageKey>("overview");
   const [contentTab, setContentTab] = useState<ContentKey>("meditations");
+  const [dashboard, setDashboard] = useState(initialDashboard);
+  const [dashboardLoaded, setDashboardLoaded] = useState(dashboardInitiallyLoaded);
+  const [dashboardLoading, setDashboardLoading] = useState(!dashboardInitiallyLoaded);
+  const [dashboardErrorState, setDashboardErrorState] = useState(dashboardError ?? "");
   const [toast, setToast] = useState<Toast | null>(
     initialNotice ?? (dashboardError ? { tone: "warning", message: dashboardError } : null),
   );
   const [auditRunning, setAuditRunning] = useState(false);
+  const [detailView, setDetailView] = useState<DetailView | null>(null);
 
   useEffect(() => {
     if (!toast || toast.sticky) return;
@@ -107,10 +119,54 @@ export function AdminConsole({
   const subscriptions = dashboard.summary.subscriptions;
   const activation = dashboard.summary.activation;
   const readiness = dashboard.readiness ?? fallbackReadiness();
-  const activeRate = users.total > 0 ? (users.active_7d / users.total) * 100 : 0;
   const dauTrend = dashboard.activity?.daily_active_users ?? [];
   const requestTrend = dashboard.activity?.request_volume ?? [];
   const openWork = dashboard.health.todos.length;
+
+  async function refreshDashboard({ quiet = false }: { quiet?: boolean } = {}) {
+    setDashboardLoading(true);
+    if (!quiet) {
+      setToast({ tone: "info", sticky: true, message: "Refreshing dashboard data." });
+    }
+
+    try {
+      const response = await fetch("/api/admin/growth/dashboard?days=30", {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok || !body?.ok || !body?.data) {
+        const message = body?.error ?? "Dashboard data could not be loaded.";
+        setDashboardErrorState(message);
+        setToast({ tone: "warning", message });
+        return;
+      }
+
+      setDashboard(body.data as GrowthDashboardData);
+      setDashboardLoaded(true);
+      setDashboardErrorState("");
+      if (!quiet) {
+        setToast({ tone: "success", message: "Dashboard data refreshed." });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Dashboard data could not be loaded.";
+      setDashboardErrorState(message);
+      setToast({ tone: "warning", message });
+    } finally {
+      setDashboardLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!dashboardInitiallyLoaded) {
+      const timeout = window.setTimeout(() => {
+        void refreshDashboard({ quiet: true });
+      }, 0);
+      return () => window.clearTimeout(timeout);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function runAudit() {
     const startedAt = performance.now();
@@ -139,9 +195,9 @@ export function AdminConsole({
 
       setToast({
         tone: "success",
-        message: `Lifecycle audit completed in ${elapsed}s. Refreshing dashboard data.`,
+        message: `Lifecycle audit completed in ${elapsed}s. Updating dashboard data.`,
       });
-      router.refresh();
+      void refreshDashboard({ quiet: true });
     } catch (error) {
       setToast({
         tone: "danger",
@@ -153,18 +209,18 @@ export function AdminConsole({
   }
 
   return (
-    <main className="relative isolate flex h-dvh min-h-0 overflow-hidden bg-[#fbfaf6] text-black">
+    <main className="relative isolate flex h-dvh min-h-0 overflow-hidden bg-[#f7f2f9] text-black">
       <Image
         src="/images/generated/brand-atmosphere-light.png"
         alt=""
         fill
-        className="absolute inset-0 -z-20 object-cover opacity-65"
+        className="absolute inset-0 -z-20 object-cover opacity-72"
         priority
         sizes="100vw"
       />
-      <div className="absolute inset-0 -z-10 bg-[#fbfaf6]/78" />
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_18%_12%,rgba(80,104,231,0.20),transparent_30%),radial-gradient(circle_at_82%_18%,rgba(234,111,207,0.16),transparent_30%),linear-gradient(180deg,rgba(251,250,246,0.70),rgba(251,250,246,0.86))]" />
       <div className="flex h-full min-w-0 flex-1 flex-col">
-        <header className="shrink-0 border-b border-black/10 bg-[#fbfaf6]/86 backdrop-blur-xl">
+        <header className="shrink-0 border-b border-white/55 bg-white/34 shadow-[0_12px_42px_rgba(30,32,50,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl">
           <div className="flex min-h-16 items-center gap-3 px-3 sm:px-4">
             <div className="flex min-w-0 items-center gap-3 pr-2">
               <Image
@@ -189,7 +245,7 @@ export function AdminConsole({
             </div>
 
             <nav className="min-w-0 flex-1 overflow-x-auto">
-              <div className="flex w-max gap-1 rounded-lg border border-black/10 bg-white/68 p-1 shadow-[0_12px_40px_rgba(0,0,0,0.04)]">
+              <div className="flex w-max gap-1 rounded-full border border-white/55 bg-white/36 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl">
                 {pages.map((page) => (
                   <TabButton
                     key={page.key}
@@ -207,7 +263,7 @@ export function AdminConsole({
                 type="button"
                 onClick={runAudit}
                 disabled={auditRunning}
-                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-black/12 bg-white/76 px-3 text-sm font-semibold text-black transition hover:border-black/35 hover:bg-white disabled:cursor-wait disabled:opacity-65"
+                className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/60 bg-white/50 px-3 text-sm font-semibold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] transition duration-200 hover:-translate-y-0.5 hover:border-white/85 hover:bg-white/75 hover:shadow-[0_16px_42px_rgba(80,104,231,0.16)] disabled:cursor-wait disabled:opacity-65"
               >
                 <RefreshCw
                   aria-hidden="true"
@@ -218,7 +274,7 @@ export function AdminConsole({
                 <span className="hidden sm:inline">{auditRunning ? "Auditing" : "Audit"}</span>
               </button>
               <form action="/api/admin/session/logout" method="post">
-                <button className="min-h-10 rounded-lg bg-black px-3 text-sm font-semibold text-white transition hover:bg-[#292929] sm:px-4">
+                <button className="min-h-10 rounded-full bg-black px-3 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(0,0,0,0.18)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#292929] hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)] sm:px-4">
                   Log out
                 </button>
               </form>
@@ -226,87 +282,52 @@ export function AdminConsole({
           </div>
         </header>
 
-        <section className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 sm:p-4">
-          <div className="flex shrink-0 gap-2 overflow-x-auto md:grid md:grid-cols-3 xl:grid-cols-6">
-            <MetricTile
-              icon={Gauge}
-              label="Health"
-              value={dashboard.health.score}
-              detail={titleCase(dashboard.health.status)}
-              tone={dashboard.health.score >= 85 ? "green" : dashboard.health.score >= 65 ? "yellow" : "red"}
-            />
-            <MetricTile
-              icon={Users}
-              label="Users"
-              value={users.total}
-              detail={`${formatNumber(users.new)} new`}
-              tone="black"
-            />
-            <MetricTile
-              icon={Activity}
-              label="Active 7d"
-              value={users.active_7d}
-              detail={`${formatPercent(activeRate)} of users`}
-              tone="blue"
-            />
-            <MetricTile
-              icon={CircleDollarSign}
-              label="Subscriptions"
-              value={subscriptions.active ?? 0}
-              detail={`${formatNumber(subscriptions.new_purchases ?? 0)} purchases`}
-              tone="green"
-            />
-            <MetricTile
-              icon={Mail}
-              label="Email Fail"
-              value={`${dashboard.emails.failure_rate}%`}
-              detail={`${formatNumber(dashboard.emails.total)} records`}
-              tone={dashboard.emails.failure_rate >= 5 ? "red" : "green"}
-            />
-            <MetricTile
-              icon={AlertTriangle}
-              label="Queue"
-              value={openWork}
-              detail={`${dashboard.events.coverage.percent}% events`}
-              tone={openWork ? "yellow" : "green"}
-            />
-          </div>
-
-          <div className="min-h-0 overflow-hidden">
-            {activePage === "overview" ? (
+        <section className="min-h-0 flex-1 p-3 sm:p-4">
+          <div className="h-full min-h-0 overflow-hidden">
+            {!dashboardLoaded && activePage !== "blogs" ? (
+              <DashboardSkeleton error={dashboardErrorState} loading={dashboardLoading} />
+            ) : null}
+            {dashboardLoaded && activePage === "overview" ? (
               <OverviewPage
                 activation={activation}
                 dashboard={dashboard}
                 dauTrend={dauTrend}
+                onInspect={setDetailView}
+                openWork={openWork}
                 requestTrend={requestTrend}
+                subscriptions={subscriptions}
                 users={users}
               />
             ) : null}
-            {activePage === "retention" ? (
-              <RetentionPage dashboard={dashboard} dauTrend={dauTrend} requestTrend={requestTrend} />
+            {dashboardLoaded && activePage === "retention" ? (
+              <RetentionPage dashboard={dashboard} dauTrend={dauTrend} onInspect={setDetailView} requestTrend={requestTrend} />
             ) : null}
-            {activePage === "events" ? <EventsPage dashboard={dashboard} /> : null}
-            {activePage === "lifecycle" ? (
+            {dashboardLoaded && activePage === "events" ? <EventsPage dashboard={dashboard} onInspect={setDetailView} /> : null}
+            {dashboardLoaded && activePage === "lifecycle" ? (
               <LifecyclePage
                 auditRunning={auditRunning}
                 dashboard={dashboard}
+                onInspect={setDetailView}
                 onAudit={runAudit}
                 readiness={readiness}
               />
             ) : null}
-            {activePage === "content" ? (
+            {dashboardLoaded && activePage === "content" ? (
               <ContentPage
+                key={contentTab}
                 content={dashboard.content}
                 contentTab={contentTab}
+                onInspect={setDetailView}
                 onContentTabChange={setContentTab}
               />
             ) : null}
             {activePage === "blogs" ? <BlogsPage articles={articles} /> : null}
-            {activePage === "system" ? <SystemPage dashboard={dashboard} readiness={readiness} /> : null}
+            {dashboardLoaded && activePage === "system" ? <SystemPage dashboard={dashboard} onInspect={setDetailView} readiness={readiness} /> : null}
           </div>
         </section>
       </div>
       {toast ? <ToastNotice toast={toast} onClose={() => setToast(null)} /> : null}
+      {detailView ? <DetailModal detail={detailView} onClose={() => setDetailView(null)} /> : null}
     </main>
   );
 }
@@ -315,17 +336,115 @@ function OverviewPage({
   activation,
   dashboard,
   dauTrend,
+  onInspect,
+  openWork,
   requestTrend,
+  subscriptions,
   users,
 }: {
   activation: Record<string, number>;
   dashboard: GrowthDashboardData;
   dauTrend: GrowthTrendPoint[];
+  onInspect: (detail: DetailView) => void;
+  openWork: number;
   requestTrend: GrowthTrendPoint[];
+  subscriptions: Record<string, number>;
   users: GrowthDashboardData["summary"]["users"];
 }) {
+  const activeRate = users.total > 0 ? (users.active_7d / users.total) * 100 : 0;
+
   return (
-    <div className="grid h-full min-h-0 gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden">
+      <div className="flex shrink-0 gap-2 overflow-x-auto md:grid md:grid-cols-3 xl:grid-cols-6">
+        <MetricTile
+          icon={Gauge}
+          label="Health"
+          value={dashboard.health.score}
+          detail={titleCase(dashboard.health.status)}
+          tone={dashboard.health.score >= 85 ? "green" : dashboard.health.score >= 65 ? "yellow" : "red"}
+          onClick={() => onInspect({
+            eyebrow: "Health",
+            title: `Score ${dashboard.health.score}`,
+            rows: dashboard.health.checks.map((check) => ({ label: check.label, value: titleCase(check.status) })),
+          })}
+        />
+        <MetricTile
+          icon={Users}
+          label="Users"
+          value={users.total}
+          detail={`${formatNumber(users.new)} new`}
+          tone="black"
+          onClick={() => onInspect({
+            eyebrow: "Users",
+            title: formatNumber(users.total),
+            rows: [
+              { label: "New users", value: users.new },
+              { label: "Active 24h", value: users.active_24h },
+              { label: "Active 7d", value: users.active_7d },
+              { label: "Active 30d", value: users.active_30d },
+            ],
+          })}
+        />
+        <MetricTile
+          icon={Activity}
+          label="Active 7d"
+          value={users.active_7d}
+          detail={`${formatPercent(activeRate)} of users`}
+          tone="blue"
+          onClick={() => onInspect({
+            eyebrow: "Active users",
+            title: `${formatNumber(users.active_7d)} in 7 days`,
+            rows: [
+              { label: "Active 24h", value: users.active_24h },
+              { label: "Active 30d", value: users.active_30d },
+              { label: "Request volume", value: dashboard.activity?.total_requests ?? 0 },
+            ],
+          })}
+        />
+        <MetricTile
+          icon={CircleDollarSign}
+          label="Subscriptions"
+          value={subscriptions.active ?? 0}
+          detail={`${formatNumber(subscriptions.new_purchases ?? 0)} purchases`}
+          tone="green"
+          onClick={() => onInspect({
+            eyebrow: "Subscriptions",
+            title: `${formatNumber(subscriptions.active ?? 0)} active`,
+            rows: Object.entries(subscriptions).map(([label, value]) => ({ label: labelize(label), value })),
+          })}
+        />
+        <MetricTile
+          icon={Mail}
+          label="Email Fail"
+          value={`${dashboard.emails.failure_rate}%`}
+          detail={`${formatNumber(dashboard.emails.total)} records`}
+          tone={dashboard.emails.failure_rate >= 5 ? "red" : "green"}
+          onClick={() => onInspect({
+            eyebrow: "Lifecycle email",
+            title: `${dashboard.emails.failure_rate}% failure rate`,
+            rows: [
+              { label: "Total", value: dashboard.emails.total },
+              { label: "Growth", value: dashboard.emails.growth_total },
+              { label: "Legacy", value: dashboard.emails.legacy_total },
+              { label: "Failed", value: dashboard.emails.failed },
+            ],
+          })}
+        />
+        <MetricTile
+          icon={AlertTriangle}
+          label="Queue"
+          value={openWork}
+          detail={`${dashboard.events.coverage.percent}% events`}
+          tone={openWork ? "yellow" : "green"}
+          onClick={() => onInspect({
+            eyebrow: "Operator queue",
+            title: `${openWork} open items`,
+            rows: dashboard.health.todos.map((todo) => ({ label: todo.title, value: todo.severity })),
+          })}
+        />
+      </div>
+
+      <div className="grid min-h-0 gap-3 overflow-hidden xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
       <Panel title="App Pulse" eyebrow={`${dashboard.period.days} day window`} icon={TrendingUp}>
         <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
           <div className="grid min-h-0 gap-3 lg:grid-cols-2">
@@ -334,12 +453,22 @@ function OverviewPage({
               value={formatNumber(users.active_7d)}
               data={dauTrend}
               color="#5068e7"
+              onClick={() => onInspect({
+                eyebrow: "Trend",
+                title: "Daily active users",
+                rows: trendSummaryRows(dauTrend),
+              })}
             />
             <ChartBlock
               title="Request volume"
               value={formatNumber(dashboard.activity?.total_requests ?? 0)}
               data={requestTrend}
               color="#209d13"
+              onClick={() => onInspect({
+                eyebrow: "Trend",
+                title: "Backend request volume",
+                rows: trendSummaryRows(requestTrend),
+              })}
             />
           </div>
           <div className="grid gap-2 sm:grid-cols-4">
@@ -373,6 +502,7 @@ function OverviewPage({
           </ScrollStack>
         </Panel>
       </div>
+      </div>
     </div>
   );
 }
@@ -380,30 +510,54 @@ function OverviewPage({
 function RetentionPage({
   dashboard,
   dauTrend,
+  onInspect,
   requestTrend,
 }: {
   dashboard: GrowthDashboardData;
   dauTrend: GrowthTrendPoint[];
+  onInspect: (detail: DetailView) => void;
   requestTrend: GrowthTrendPoint[];
 }) {
   const retention = dashboard.summary.users.retention;
 
   return (
-    <div className="grid h-full min-h-0 gap-3 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+    <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] xl:overflow-hidden">
       <Panel title="Retention Cohorts" eyebrow="Returned after signup" icon={HeartPulse}>
         <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
           <div className="grid gap-2 sm:grid-cols-3">
-            <RetentionCard label="Day 1" cohort={retention.d1?.cohort ?? 0} retained={retention.d1?.retained ?? 0} rate={retention.d1?.rate ?? 0} />
-            <RetentionCard label="Day 7" cohort={retention.d7?.cohort ?? 0} retained={retention.d7?.retained ?? 0} rate={retention.d7?.rate ?? 0} />
-            <RetentionCard label="Day 30" cohort={retention.d30?.cohort ?? 0} retained={retention.d30?.retained ?? 0} rate={retention.d30?.rate ?? 0} />
+            <RetentionCard
+              label="Day 1"
+              cohort={retention.d1?.cohort ?? 0}
+              retained={retention.d1?.retained ?? 0}
+              rate={retention.d1?.rate ?? 0}
+              onClick={() => onInspect(retentionDetail("Day 1", retention.d1))}
+            />
+            <RetentionCard
+              label="Day 7"
+              cohort={retention.d7?.cohort ?? 0}
+              retained={retention.d7?.retained ?? 0}
+              rate={retention.d7?.rate ?? 0}
+              onClick={() => onInspect(retentionDetail("Day 7", retention.d7))}
+            />
+            <RetentionCard
+              label="Day 30"
+              cohort={retention.d30?.cohort ?? 0}
+              retained={retention.d30?.retained ?? 0}
+              rate={retention.d30?.rate ?? 0}
+              onClick={() => onInspect(retentionDetail("Day 30", retention.d30))}
+            />
           </div>
-          <div className="min-h-0 rounded-lg border border-black/10 bg-white/70 p-3">
+          <button
+            type="button"
+            onClick={() => onInspect({ eyebrow: "Trend", title: "Daily active users", rows: trendSummaryRows(dauTrend) })}
+            className="min-h-0 rounded-lg border border-white/55 bg-white/45 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)]"
+          >
             <LineChart data={dauTrend} color="#5068e7" />
-          </div>
+          </button>
         </div>
       </Panel>
-      <Panel title="Activation Mix" eyebrow="Behavior loops" icon={Activity}>
-        <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
+      <div className="grid min-h-0 gap-3 xl:grid-rows-[minmax(0,0.54fr)_minmax(0,0.46fr)]">
+        <Panel title="Activation Mix" eyebrow="Behavior loops" icon={Activity}>
           <BarSet
             items={[
               { label: "Check-ins", value: dashboard.summary.activation.check_ins ?? 0, color: "#5068e7" },
@@ -411,25 +565,51 @@ function RetentionPage({
               { label: "Glimmers", value: dashboard.summary.activation.glimmers ?? 0, color: "#209d13" },
               { label: "Journals", value: dashboard.summary.activation.journals ?? 0, color: "#ea6fcf" },
             ]}
+            onInspect={onInspect}
           />
+        </Panel>
+        <Panel title="Backend Activity Requests" eyebrow="Request volume" icon={TrendingUp}>
           <ChartBlock
-            title="Backend activity requests"
+            title="Last 30 days"
             value={formatNumber(dashboard.activity?.total_requests ?? 0)}
             data={requestTrend}
             color="#111111"
+            onClick={() => onInspect({
+              eyebrow: "Trend",
+              title: "Backend activity requests",
+              rows: trendSummaryRows(requestTrend),
+            })}
           />
-        </div>
-      </Panel>
+        </Panel>
+      </div>
     </div>
   );
 }
 
-function EventsPage({ dashboard }: { dashboard: GrowthDashboardData }) {
+function EventsPage({
+  dashboard,
+  onInspect,
+}: {
+  dashboard: GrowthDashboardData;
+  onInspect: (detail: DetailView) => void;
+}) {
   return (
-    <div className="grid h-full min-h-0 gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+    <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] xl:overflow-hidden">
       <Panel title="Event Coverage" eyebrow="Expected client taxonomy" icon={ClipboardList}>
         <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-          <div className="grid gap-3 sm:grid-cols-[150px_minmax(0,1fr)]">
+          <button
+            type="button"
+            onClick={() => onInspect({
+              eyebrow: "Event coverage",
+              title: `${dashboard.events.coverage.percent}% covered`,
+              rows: [
+                { label: "Tracked", value: dashboard.events.coverage.tracked },
+                { label: "Expected", value: dashboard.events.coverage.expected },
+                { label: "Missing", value: dashboard.events.coverage.missing.length },
+              ],
+            })}
+            className="grid gap-3 rounded-lg border border-white/55 bg-white/42 p-2 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)] sm:grid-cols-[150px_minmax(0,1fr)]"
+          >
             <RingMeter value={dashboard.events.coverage.percent} />
             <div className="grid content-center gap-2">
               <TinyStat
@@ -439,10 +619,21 @@ function EventsPage({ dashboard }: { dashboard: GrowthDashboardData }) {
               <TinyStat label="Total events" value={formatNumber(dashboard.events.total)} />
               <TinyStat label="Known users" value={formatNumber(dashboard.events.unique_users)} />
             </div>
-          </div>
+          </button>
           <ScrollStack>
             {dashboard.events.coverage.missing.map((event) => (
-              <SignalRow key={event} title={event} detail="Missing in selected period" value="Needs release" tone="warn" />
+              <SignalRow
+                key={event}
+                title={event}
+                detail="Missing in selected period"
+                value="Needs release"
+                tone="warn"
+                onClick={() => onInspect({
+                  eyebrow: "Missing event",
+                  title: event,
+                  description: "This event has not appeared in production traffic for the selected period.",
+                })}
+              />
             ))}
             {!dashboard.events.coverage.missing.length ? (
               <QuietState
@@ -464,6 +655,11 @@ function EventsPage({ dashboard }: { dashboard: GrowthDashboardData }) {
                 value: formatNumber(event.count),
               }))}
               empty="No first-party events received yet."
+              onInspect={(item) => onInspect({
+                eyebrow: "Event",
+                title: item.label,
+                rows: [{ label: "Count", value: item.value }],
+              })}
             />
           </ScrollStack>
         </Panel>
@@ -475,6 +671,15 @@ function EventsPage({ dashboard }: { dashboard: GrowthDashboardData }) {
                 title={event.event_name}
                 detail={`${event.source} / user ${event.user_id ?? "anonymous"}`}
                 value={formatDateTime(event.created_at)}
+                onClick={() => onInspect({
+                  eyebrow: "Recent event",
+                  title: event.event_name,
+                  rows: [
+                    { label: "Source", value: event.source },
+                    { label: "User", value: event.user_id ?? "anonymous" },
+                    { label: "Created", value: formatDateTime(event.created_at) },
+                  ],
+                })}
               />
             ))}
             {!dashboard.events.recent.length ? (
@@ -495,11 +700,13 @@ function EventsPage({ dashboard }: { dashboard: GrowthDashboardData }) {
 function LifecyclePage({
   auditRunning,
   dashboard,
+  onInspect,
   onAudit,
   readiness,
 }: {
   auditRunning: boolean;
   dashboard: GrowthDashboardData;
+  onInspect: (detail: DetailView) => void;
   onAudit: () => void;
   readiness: GrowthReadiness;
 }) {
@@ -539,6 +746,11 @@ function LifecyclePage({
                 value: formatNumber(email.count),
               }))}
               empty="No lifecycle email rows found."
+              onInspect={(item) => onInspect({
+                eyebrow: "Email cohort",
+                title: item.label,
+                rows: [{ label: "Count", value: item.value }],
+              })}
             />
           </ScrollStack>
         </div>
@@ -567,6 +779,16 @@ function LifecyclePage({
                 detail={run.finished_at ? `Finished ${formatDateTime(run.finished_at)}` : "Run in progress"}
                 value={titleCase(run.status)}
                 tone={run.status === "completed" ? "good" : "warn"}
+                onClick={() => onInspect({
+                  eyebrow: "Automation run",
+                  title: run.run_type,
+                  rows: [
+                    { label: "Status", value: titleCase(run.status) },
+                    { label: "Health score", value: run.health_score ?? "n/a" },
+                    { label: "Started", value: run.started_at ? formatDateTime(run.started_at) : "n/a" },
+                    { label: "Finished", value: run.finished_at ? formatDateTime(run.finished_at) : "n/a" },
+                  ],
+                })}
               />
             ))}
             {!dashboard.automation.recent_runs.length ? (
@@ -587,19 +809,25 @@ function LifecyclePage({
 function ContentPage({
   content,
   contentTab,
+  onInspect,
   onContentTabChange,
 }: {
   content?: GrowthContentInventory;
   contentTab: ContentKey;
+  onInspect: (detail: DetailView) => void;
   onContentTabChange: (key: ContentKey) => void;
 }) {
+  const [page, setPage] = useState(1);
   const counts = content?.counts ?? {};
   const recentRows = content?.recent?.[contentTab] ?? [];
   const surface = content?.api_surfaces?.find((item) => item.key === contentTab);
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(recentRows.length / pageSize));
+  const visibleRows = recentRows.slice((page - 1) * pageSize, page * pageSize);
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-      <div className="flex gap-2 overflow-x-auto md:grid md:grid-cols-3 xl:grid-cols-6">
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden">
+      <div className="flex gap-2 overflow-x-auto rounded-full border border-white/55 bg-white/30 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl">
         {contentTabs.map((tab) => (
           <ContentTabButton
             key={tab.key}
@@ -614,19 +842,48 @@ function ContentPage({
 
       <div className="grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Panel title={titleCase(contentTab)} eyebrow="Recent content" icon={BookOpen}>
-          <ScrollStack>
-            {recentRows.map((row, index) => (
-              <ContentRow key={`${contentTab}-${row.id ?? index}`} row={row} />
-            ))}
-            {!recentRows.length ? (
-              <QuietState
-                icon={AlertTriangle}
-                title="No recent rows"
-                detail="This content type is not returning inventory rows yet."
-                tone="warn"
-              />
-            ) : null}
-          </ScrollStack>
+          <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
+            <div className="min-h-0 overflow-y-auto rounded-lg border border-white/50 bg-white/36 backdrop-blur-xl">
+              {visibleRows.map((row, index) => (
+                <ContentRow
+                  key={`${contentTab}-${row.id ?? index}`}
+                  row={row}
+                  onClick={() => onInspect(contentDetail(contentTab, row))}
+                />
+              ))}
+              {!visibleRows.length ? (
+                <QuietState
+                  icon={AlertTriangle}
+                  title="No recent rows"
+                  detail="This content type is not returning inventory rows yet."
+                  tone="warn"
+                />
+              ) : null}
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">
+                Page {page} of {totalPages} / {formatNumber(recentRows.length)} rows
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  disabled={page === 1}
+                  className="min-h-9 rounded-full border border-white/60 bg-white/45 px-3 text-xs font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(0,0,0,0.12)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                  disabled={page === totalPages}
+                  className="min-h-9 rounded-full border border-white/60 bg-white/45 px-3 text-xs font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(0,0,0,0.12)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
         </Panel>
         <Panel title="API Surface" eyebrow="Backend route" icon={ShieldCheck}>
           <div className="grid content-start gap-3">
@@ -674,10 +931,10 @@ function ContentTabButton({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={[
-        "grid min-h-20 w-44 shrink-0 gap-2 rounded-lg border p-3 text-left transition md:w-auto",
+        "grid min-h-14 w-44 shrink-0 gap-1 rounded-full border px-4 py-2 text-left transition duration-200 md:w-auto",
         active
-          ? "border-black bg-white shadow-[0_12px_34px_rgba(0,0,0,0.08)]"
-          : "border-black/10 bg-white/68 hover:border-black/32",
+          ? "border-white/85 bg-white/72 shadow-[0_18px_55px_rgba(80,104,231,0.18),inset_0_1px_0_rgba(255,255,255,0.95)]"
+          : "border-white/45 bg-white/24 hover:-translate-y-0.5 hover:border-white/75 hover:bg-white/56 hover:shadow-[0_14px_40px_rgba(80,104,231,0.12)]",
       ].join(" ")}
     >
       <div className="flex items-center justify-between gap-2">
@@ -693,17 +950,31 @@ function ContentTabButton({
 
 function SystemPage({
   dashboard,
+  onInspect,
   readiness,
 }: {
   dashboard: GrowthDashboardData;
+  onInspect: (detail: DetailView) => void;
   readiness: GrowthReadiness;
 }) {
   return (
-    <div className="grid h-full min-h-0 gap-3 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+    <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] xl:overflow-hidden">
       <Panel title="System Health" eyebrow="Vendor status" icon={ShieldCheck}>
         <ScrollStack>
           {dashboard.health.checks.map((check) => (
-            <HealthCheckRow key={check.key} check={check} />
+            <button
+              key={check.key}
+              type="button"
+              onClick={() => onInspect({
+                eyebrow: "Health check",
+                title: check.label,
+                description: check.detail,
+                rows: [{ label: "Status", value: titleCase(check.status) }],
+              })}
+              className="block w-full text-left transition hover:-translate-y-0.5"
+            >
+              <HealthCheckRow check={check} />
+            </button>
           ))}
         </ScrollStack>
       </Panel>
@@ -719,6 +990,11 @@ function SystemPage({
                   detail="Table"
                   value={value ? "Ready" : "Missing"}
                   tone={value ? "good" : "warn"}
+                  onClick={() => onInspect({
+                    eyebrow: "Readiness table",
+                    title: labelize(key),
+                    rows: [{ label: "Status", value: value ? "Ready" : "Missing" }],
+                  })}
                 />
               ))}
               {Object.entries(readiness.integrations).map(([key, value]) => (
@@ -728,6 +1004,11 @@ function SystemPage({
                   detail="Integration"
                   value={value ? "Ready" : "Missing"}
                   tone={value ? "good" : "warn"}
+                  onClick={() => onInspect({
+                    eyebrow: "Integration",
+                    title: labelize(key),
+                    rows: [{ label: "Status", value: value ? "Ready" : "Missing" }],
+                  })}
                 />
               ))}
             </div>
@@ -736,10 +1017,19 @@ function SystemPage({
         <Panel title="Endpoints" eyebrow="Connected APIs" icon={Send}>
           <ScrollStack>
             {Object.entries(readiness.endpoints ?? {}).map(([key, value]) => (
-              <div key={key} className="grid gap-1 border-b border-black/10 py-2.5 last:border-0">
+              <button
+                key={key}
+                type="button"
+                onClick={() => onInspect({
+                  eyebrow: "Endpoint",
+                  title: labelize(key),
+                  description: value,
+                })}
+                className="grid gap-1 border-b border-black/10 py-2.5 text-left transition hover:translate-x-1 last:border-0"
+              >
                 <p className="text-sm font-semibold text-black">{labelize(key)}</p>
                 <p className="truncate font-mono text-xs text-black/58">{value}</p>
-              </div>
+              </button>
             ))}
           </ScrollStack>
         </Panel>
@@ -760,8 +1050,8 @@ function Panel({
   title: string;
 }) {
   return (
-    <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-black/10 bg-white/[0.78] shadow-[0_16px_48px_rgba(0,0,0,0.055)] backdrop-blur-xl">
-      <div className="flex items-start justify-between gap-3 border-b border-black/10 px-4 py-3">
+    <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-white/55 bg-white/[0.42] shadow-[0_18px_55px_rgba(30,32,50,0.08),inset_0_1px_0_rgba(255,255,255,0.78)] backdrop-blur-2xl transition duration-200 hover:-translate-y-0.5 hover:border-white/70 hover:shadow-[0_28px_90px_rgba(80,104,231,0.13),inset_0_1px_0_rgba(255,255,255,0.9)]">
+      <div className="flex items-start justify-between gap-3 border-b border-white/55 bg-white/[0.18] px-4 py-3">
         <div className="min-w-0">
           <p className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-black/50">
             {eyebrow}
@@ -770,13 +1060,13 @@ function Panel({
         </div>
         <Icon aria-hidden="true" className="shrink-0 text-[#5068e7]" size={20} strokeWidth={1.9} />
       </div>
-      <div className="min-h-0 p-3">{children}</div>
+      <div className="min-h-0 overflow-hidden p-3">{children}</div>
     </section>
   );
 }
 
 function ScrollStack({ children }: { children: React.ReactNode }) {
-  return <div className="h-full min-h-0 overflow-y-auto pr-1">{children}</div>;
+  return <div className="h-full min-h-0 overflow-y-auto overscroll-contain pr-1">{children}</div>;
 }
 
 function TabButton({
@@ -796,10 +1086,10 @@ function TabButton({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={[
-        "inline-flex min-h-9 items-center gap-2 rounded-md px-3 text-sm font-semibold transition",
+        "inline-flex min-h-9 items-center gap-2 rounded-full px-3 text-sm font-semibold transition duration-200",
         active
-          ? "bg-black text-white shadow-sm"
-          : "text-black/62 hover:bg-black/[0.06] hover:text-black",
+          ? "bg-black text-white shadow-[0_12px_34px_rgba(0,0,0,0.18)]"
+          : "text-black/62 hover:-translate-y-0.5 hover:bg-white/70 hover:text-black hover:shadow-[0_14px_34px_rgba(80,104,231,0.12)]",
       ].join(" ")}
     >
       <Icon aria-hidden="true" size={15} strokeWidth={1.9} />
@@ -812,20 +1102,22 @@ function MetricTile({
   detail,
   icon: Icon,
   label,
+  onClick,
   tone,
   value,
 }: {
   detail: string;
   icon: LucideIcon;
   label: string;
+  onClick?: () => void;
   tone: "black" | "blue" | "green" | "red" | "yellow";
   value: number | string;
 }) {
-  return (
-    <div className="min-h-24 w-44 shrink-0 rounded-lg border border-black/10 bg-white/74 p-3 shadow-[0_10px_34px_rgba(0,0,0,0.04)] backdrop-blur-xl md:w-auto">
+  const content = (
+    <>
       <div className="flex items-center justify-between gap-2">
         <p className="truncate text-xs font-semibold uppercase tracking-[0.12em] text-black/50">{label}</p>
-        <span className={["grid size-8 place-items-center rounded-lg", toneClass(tone)].join(" ")}>
+        <span className={["grid size-8 place-items-center rounded-full", toneClass(tone)].join(" ")}>
           <Icon aria-hidden="true" size={16} strokeWidth={1.9} />
         </span>
       </div>
@@ -833,6 +1125,22 @@ function MetricTile({
         {typeof value === "number" ? formatNumber(value) : value}
       </p>
       <p className="mt-0.5 truncate text-sm text-black/56">{detail}</p>
+    </>
+  );
+
+  const className = "min-h-24 w-44 shrink-0 rounded-lg border border-white/55 bg-white/42 p-3 text-left shadow-[0_14px_44px_rgba(30,32,50,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl transition duration-200 hover:-translate-y-0.5 hover:border-white/75 hover:shadow-[0_24px_70px_rgba(80,104,231,0.16),inset_0_1px_0_rgba(255,255,255,0.95)] md:w-auto";
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className={className}>
+      {content}
     </div>
   );
 }
@@ -840,16 +1148,18 @@ function MetricTile({
 function ChartBlock({
   color,
   data,
+  onClick,
   title,
   value,
 }: {
   color: string;
   data: GrowthTrendPoint[];
+  onClick?: () => void;
   title: string;
   value: string;
 }) {
-  return (
-    <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-black/10 bg-white/70 p-3">
+  const content = (
+    <>
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{title}</p>
@@ -859,6 +1169,22 @@ function ChartBlock({
       <div className="min-h-0">
         <LineChart data={data} color={color} />
       </div>
+    </>
+  );
+
+  const className = "grid min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-white/55 bg-white/42 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)]";
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className={className}>
+      {content}
     </div>
   );
 }
@@ -898,9 +1224,9 @@ function LineChart({ color, data }: { color: string; data: GrowthTrendPoint[] })
         </linearGradient>
       </defs>
       <polygon points={area} fill={`url(#chart-${color.replace("#", "")})`} />
-      <polyline points={path} fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />
+      <polyline points={path} fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
       {points.slice(-1).map((point) => (
-        <circle key={point.date} cx={point.x} cy={point.y} r="4" fill={color} />
+        <circle key={point.date} cx={point.x} cy={point.y} r="3" fill={color} />
       ))}
     </svg>
   );
@@ -943,14 +1269,29 @@ function FunnelBars({ funnel }: { funnel: GrowthDashboardData["funnel"] }) {
   );
 }
 
-function BarSet({ items }: { items: Array<{ color: string; label: string; value: number }> }) {
+function BarSet({
+  items,
+  onInspect,
+}: {
+  items: Array<{ color: string; label: string; value: number }>;
+  onInspect?: (detail: DetailView) => void;
+}) {
   const max = Math.max(...items.map((item) => item.value), 1);
 
   return (
-    <div className="grid h-full min-h-56 items-end gap-3 rounded-lg border border-black/10 bg-white/70 p-4 sm:grid-cols-4">
+    <div className="grid h-full min-h-0 items-end gap-3 rounded-lg border border-white/55 bg-white/36 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl sm:grid-cols-4">
       {items.map((item) => (
-        <div key={item.label} className="grid h-full min-h-44 grid-rows-[minmax(0,1fr)_auto] gap-2">
-          <div className="flex h-full items-end rounded-lg bg-black/[0.05] p-1.5">
+        <button
+          key={item.label}
+          type="button"
+          onClick={() => onInspect?.({
+            eyebrow: "Activation",
+            title: item.label,
+            rows: [{ label: "Count", value: item.value }],
+          })}
+          className="grid h-full min-h-40 grid-rows-[minmax(0,1fr)_auto] gap-2 text-left transition duration-200 hover:-translate-y-0.5"
+        >
+          <div className="flex h-full items-end rounded-lg bg-white/52 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
             <div
               className="w-full rounded-md"
               style={{ height: `${Math.max(4, (item.value / max) * 100)}%`, backgroundColor: item.color }}
@@ -960,7 +1301,7 @@ function BarSet({ items }: { items: Array<{ color: string; label: string; value:
             <p className="truncate text-xs font-semibold uppercase tracking-[0.1em] text-black/48">{item.label}</p>
             <p className="mt-1 text-lg font-semibold tabular-nums text-black">{formatNumber(item.value)}</p>
           </div>
-        </div>
+        </button>
       ))}
     </div>
   );
@@ -974,13 +1315,13 @@ function RingMeter({ value }: { value: number }) {
   return (
     <div className="grid place-items-center">
       <svg viewBox="0 0 120 120" className="size-36" role="img" aria-label={`${value}% coverage`}>
-        <circle cx="60" cy="60" r={radius} stroke="rgba(0,0,0,0.09)" strokeWidth="10" fill="none" />
+        <circle cx="60" cy="60" r={radius} stroke="rgba(0,0,0,0.09)" strokeWidth="7" fill="none" />
         <circle
           cx="60"
           cy="60"
           r={radius}
           stroke={value >= 75 ? "#209d13" : value >= 40 ? "#f9bc2c" : "#f45253"}
-          strokeWidth="10"
+          strokeWidth="7"
           fill="none"
           strokeLinecap="round"
           strokeDasharray={circumference}
@@ -998,16 +1339,22 @@ function RingMeter({ value }: { value: number }) {
 function RetentionCard({
   cohort,
   label,
+  onClick,
   rate,
   retained,
 }: {
   cohort: number;
   label: string;
+  onClick?: () => void;
   rate: number;
   retained: number;
 }) {
   return (
-    <div className="rounded-lg border border-black/10 bg-white/72 p-3">
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-lg border border-white/55 bg-white/42 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_50px_rgba(80,104,231,0.14)]"
+    >
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-semibold text-black">{label}</p>
         <span className={["rounded-full px-2 py-1 text-xs font-semibold", rate >= 20 ? "bg-[#f3fbf1] text-[#176e0f]" : "bg-[#fff9e8] text-[#96690f]"].join(" ")}>
@@ -1016,11 +1363,19 @@ function RetentionCard({
       </div>
       <p className="mt-3 text-2xl font-semibold tabular-nums text-black">{formatNumber(retained)}</p>
       <p className="text-sm text-black/56">of {formatNumber(cohort)} users</p>
-    </div>
+    </button>
   );
 }
 
-function SignalList({ empty, items }: { empty: string; items: Array<{ label: string; value: string }> }) {
+function SignalList({
+  empty,
+  items,
+  onInspect,
+}: {
+  empty: string;
+  items: Array<{ label: string; value: string }>;
+  onInspect?: (item: { label: string; value: string }) => void;
+}) {
   if (!items.length) {
     return <QuietState icon={AlertTriangle} title={empty} detail="Waiting for live data." tone="warn" />;
   }
@@ -1028,7 +1383,12 @@ function SignalList({ empty, items }: { empty: string; items: Array<{ label: str
   return (
     <div className="grid gap-1">
       {items.map((item) => (
-        <SignalRow key={`${item.label}-${item.value}`} title={item.label} value={item.value} />
+        <SignalRow
+          key={`${item.label}-${item.value}`}
+          title={item.label}
+          value={item.value}
+          onClick={onInspect ? () => onInspect(item) : undefined}
+        />
       ))}
     </div>
   );
@@ -1036,17 +1396,19 @@ function SignalList({ empty, items }: { empty: string; items: Array<{ label: str
 
 function SignalRow({
   detail,
+  onClick,
   title,
   tone = "neutral",
   value,
 }: {
   detail?: string;
+  onClick?: () => void;
   title: string;
   tone?: "neutral" | "good" | "warn";
   value: string;
 }) {
-  return (
-    <div className="flex min-h-11 items-center justify-between gap-3 border-b border-black/10 py-2 last:border-0">
+  const content = (
+    <>
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-black">{title}</p>
         {detail ? <p className="truncate text-xs text-black/48">{detail}</p> : null}
@@ -1054,6 +1416,22 @@ function SignalRow({
       <span className={["shrink-0 text-sm font-semibold tabular-nums", signalToneClass(tone)].join(" ")}>
         {value}
       </span>
+    </>
+  );
+
+  const className = "flex min-h-11 w-full items-center justify-between gap-3 border-b border-black/10 py-2 text-left transition duration-200 last:border-0 hover:translate-x-1";
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className={className}>
+      {content}
     </div>
   );
 }
@@ -1083,12 +1461,16 @@ function TodoRow({ todo }: { todo: GrowthTodo }) {
   );
 }
 
-function ContentRow({ row }: { row: GrowthContentRow }) {
+function ContentRow({ onClick, row }: { onClick?: () => void; row: GrowthContentRow }) {
   const title = row.title ?? row.content ?? row.jounral_name ?? `Item ${row.id ?? ""}`;
-  const detail = row.subtitle ?? row.sub_title ?? row.artist ?? row.status ?? row.type ?? "Content row";
+  const detail = row.subtitle ?? row.sub_title ?? row.artist ?? row.status ?? row.type ?? row.duration ?? "Content row";
 
   return (
-    <div className="flex min-h-12 items-center justify-between gap-3 border-b border-black/10 py-2.5 last:border-0">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex min-h-12 w-full items-center justify-between gap-3 border-b border-black/10 px-3 py-2.5 text-left transition duration-200 last:border-0 hover:bg-white/60 hover:shadow-[inset_3px_0_0_#5068e7]"
+    >
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-black">{title}</p>
         <p className="truncate text-xs text-black/50">{detail}</p>
@@ -1096,7 +1478,7 @@ function ContentRow({ row }: { row: GrowthContentRow }) {
       <span className="shrink-0 text-xs font-semibold text-black/48">
         {row.updated_at ? formatDateTime(row.updated_at) : row.id ? `#${row.id}` : ""}
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -1129,7 +1511,7 @@ function QuietState({
 
 function TinyStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-black/10 bg-white/70 p-3">
+    <div className="rounded-lg border border-white/55 bg-white/42 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl">
       <p className="truncate text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{label}</p>
       <p className="mt-1 truncate text-lg font-semibold tabular-nums text-black">{value}</p>
     </div>
@@ -1163,7 +1545,130 @@ function ToastNotice({ onClose, toast }: { onClose: () => void; toast: Toast }) 
   );
 }
 
+function DetailModal({ detail, onClose }: { detail: DetailView; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/24 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <section className="max-h-[82dvh] w-full max-w-2xl overflow-hidden rounded-lg border border-white/65 bg-white/68 shadow-[0_34px_120px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-white/60 bg-white/28 px-5 py-4">
+          <div className="min-w-0">
+            {detail.eyebrow ? (
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-black/50">{detail.eyebrow}</p>
+            ) : null}
+            <h2 className="mt-1 text-2xl font-semibold tracking-tight text-black">{detail.title}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close detail"
+            className="grid size-9 shrink-0 place-items-center rounded-full border border-white/65 bg-white/50 text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(0,0,0,0.16)]"
+          >
+            <X aria-hidden="true" size={16} strokeWidth={2} />
+          </button>
+        </div>
+        <div className="max-h-[calc(82dvh-86px)] overflow-y-auto p-5">
+          {detail.description ? (
+            <p className="mb-4 whitespace-pre-wrap text-sm leading-6 text-black/68">{detail.description}</p>
+          ) : null}
+          {detail.rows?.length ? (
+            <div className="grid gap-2">
+              {detail.rows.map((row) => (
+                <div key={`${row.label}-${String(row.value)}`} className="grid gap-1 rounded-lg border border-white/55 bg-white/42 p-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{row.label}</p>
+                  <p className="min-w-0 break-words text-sm font-semibold text-black">{formatDetailValue(row.value)}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DashboardSkeleton({ error, loading }: { error?: string; loading: boolean }) {
+  return (
+    <div className="grid h-full min-h-0 place-items-center rounded-lg border border-white/60 bg-white/34 p-6 text-center shadow-[0_24px_80px_rgba(80,104,231,0.12),inset_0_1px_0_rgba(255,255,255,0.86)] backdrop-blur-2xl">
+      <div className="w-full max-w-xl">
+        <div className="mx-auto grid size-12 place-items-center rounded-full border border-white/70 bg-white/54 shadow-[0_18px_42px_rgba(80,104,231,0.18)]">
+          <RefreshCw aria-hidden="true" className={loading ? "animate-spin text-[#5068e7]" : "text-[#a36f00]"} size={20} />
+        </div>
+        <h1 className="mt-4 text-2xl font-semibold tracking-tight text-black">
+          {loading ? "Loading growth data" : "Dashboard data unavailable"}
+        </h1>
+        <p className="mt-2 text-sm leading-6 text-black/62">
+          {error || "The console is ready. Metrics hydrate in the background so login and navigation stay fast."}
+        </p>
+        <div className="mt-6 grid gap-2 sm:grid-cols-3">
+          {[0, 1, 2].map((item) => (
+            <div key={item} className="h-24 animate-pulse rounded-lg border border-white/55 bg-white/42" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const chartColors = ["#5068e7", "#209d13", "#ea6fcf", "#f9bc2c", "#f45253", "#111111"];
+
+function trendSummaryRows(data: GrowthTrendPoint[]) {
+  const values = data.map((point) => point.count);
+  const latest = values.at(-1) ?? 0;
+  const peak = values.length ? Math.max(...values) : 0;
+  const total = values.reduce((sum, value) => sum + value, 0);
+
+  return [
+    { label: "Latest", value: latest },
+    { label: "Peak", value: peak },
+    { label: "Total", value: total },
+    { label: "Points", value: data.length },
+  ];
+}
+
+function retentionDetail(label: string, cohort?: { cohort: number; retained: number; rate: number }): DetailView {
+  return {
+    eyebrow: "Retention cohort",
+    title: label,
+    rows: [
+      { label: "Cohort", value: cohort?.cohort ?? 0 },
+      { label: "Retained", value: cohort?.retained ?? 0 },
+      { label: "Rate", value: `${cohort?.rate ?? 0}%` },
+    ],
+  };
+}
+
+function contentDetail(contentType: ContentKey, row: GrowthContentRow): DetailView {
+  const title = row.title ?? row.content ?? row.jounral_name ?? `${titleCase(contentType)} item`;
+  const rows = [
+    { label: "ID", value: row.id },
+    { label: "Status", value: row.status },
+    { label: "Subtitle", value: row.subtitle ?? row.sub_title },
+    { label: "Artist", value: row.artist },
+    { label: "Duration", value: row.duration ?? row.time },
+    { label: "Activity ID", value: row.activity_id },
+    { label: "Activity Type", value: row.activity_type },
+    { label: "Category", value: row.cat_id },
+    { label: "User ID", value: row.user_id },
+    { label: "Trending", value: row.is_trending },
+    { label: "Video", value: row.video },
+    { label: "Audio", value: row.audio_link },
+    { label: "Share link", value: row.share_link },
+    { label: "Updated", value: row.updated_at ? formatDateTime(row.updated_at) : null },
+  ].filter((item) => item.value !== null && item.value !== undefined && item.value !== "");
+
+  return {
+    eyebrow: titleCase(contentType),
+    title: String(title),
+    description: row.description ?? row.content ?? null,
+    rows,
+  };
+}
+
+function formatDetailValue(value: string | number | boolean | null | undefined) {
+  if (value === null || value === undefined || value === "") return "n/a";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") return formatNumber(value);
+  return value;
+}
 
 function toneClass(tone: "black" | "blue" | "green" | "red" | "yellow") {
   return {

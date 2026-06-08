@@ -150,8 +150,20 @@ export type GrowthContentRow = {
   sub_title?: string | null;
   content?: string | null;
   artist?: string | null;
+  audio_link?: string | null;
+  cat_id?: string | number | null;
+  cover_image?: string | null;
+  description?: string | null;
+  duration?: string | number | null;
+  file?: string | null;
+  is_trending?: boolean | number | null;
+  share_link?: string | null;
   status?: string | null;
+  thumbnail?: string | null;
+  time?: string | number | null;
   type?: string | null;
+  user_id?: string | number | null;
+  video?: string | null;
   jounral_name?: string | null;
   activity_type?: string | null;
   activity_id?: number | string | null;
@@ -248,7 +260,7 @@ function growthDashboardKey() {
   );
 }
 
-function fallbackGrowthDashboard(message: string): GrowthDashboardData {
+export function fallbackGrowthDashboard(message: string): GrowthDashboardData {
   const hasDashboardKey = Boolean(growthDashboardKey());
 
   return {

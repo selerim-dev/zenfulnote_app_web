@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { AdminConsole } from "@/components/admin-console";
 import { ADMIN_PASSWORD_ENV, isAdminAuthenticated, isAdminConfigured } from "@/lib/admin-auth";
-import { getGrowthDashboard } from "@/lib/growth-dashboard";
+import { fallbackGrowthDashboard } from "@/lib/growth-dashboard";
 import { readLooprailStoredArticles } from "@/lib/looprail-cms";
 
 export const dynamic = "force-dynamic";
@@ -37,13 +37,10 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
     return <AdminAuthFrame>{loginForm(params.error)}</AdminAuthFrame>;
   }
 
-  const [articles, growth] = await Promise.all([
-    readLooprailStoredArticles().then((items) => items.map((article) => ({
-      ...article,
-      status: article.published ? "published" as const : "draft" as const,
-    }))),
-    getGrowthDashboard(30),
-  ]);
+  const articles = await readLooprailStoredArticles().then((items) => items.map((article) => ({
+    ...article,
+    status: article.published ? "published" as const : "draft" as const,
+  })));
 
   const initialNotice = params.growth_audit
     ? {
@@ -58,8 +55,8 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
   return (
     <AdminConsole
       articles={articles}
-      dashboard={growth.data}
-      dashboardError={growth.ok ? null : growth.error}
+      dashboard={fallbackGrowthDashboard("Loading ZenfulNote growth data.")}
+      dashboardInitiallyLoaded={false}
       initialNotice={initialNotice}
     />
   );
@@ -67,7 +64,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
 
 function AdminAuthFrame({ children }: { children: ReactNode }) {
   return (
-    <main className="relative isolate grid min-h-dvh overflow-hidden bg-[#fbfaf6] p-4 text-black sm:p-6">
+    <main className="relative isolate grid min-h-dvh overflow-hidden bg-[#f7f2f9] p-4 text-black sm:p-6">
       <Image
         src="/images/generated/brand-atmosphere-light.png"
         alt=""
@@ -76,9 +73,9 @@ function AdminAuthFrame({ children }: { children: ReactNode }) {
         priority
         sizes="100vw"
       />
-      <div className="absolute inset-0 -z-10 bg-[#fbfaf6]/70" />
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_20%_16%,rgba(80,104,231,0.20),transparent_30%),radial-gradient(circle_at_82%_20%,rgba(234,111,207,0.16),transparent_30%),linear-gradient(180deg,rgba(251,250,246,0.66),rgba(251,250,246,0.86))]" />
       <section className="mx-auto grid w-full max-w-6xl items-center gap-5 self-center lg:grid-cols-[minmax(0,0.85fr)_420px]">
-        <div className="hidden min-h-[520px] overflow-hidden rounded-lg border border-black/10 bg-black text-white shadow-[0_30px_100px_rgba(0,0,0,0.18)] lg:block">
+        <div className="hidden min-h-[520px] overflow-hidden rounded-lg border border-white/30 bg-black text-white shadow-[0_34px_120px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.25)] lg:block">
           <div className="relative h-full p-8">
             <Image
               src="/images/generated/brand-atmosphere-dark.png"
@@ -120,8 +117,8 @@ function AdminAuthFrame({ children }: { children: ReactNode }) {
 
 function loginForm(error?: string) {
   return (
-    <section className="w-full rounded-lg border border-black/10 bg-white/[0.86] p-5 shadow-[0_22px_80px_rgba(0,0,0,0.12)] backdrop-blur sm:p-6">
-      <div className="flex items-center gap-3 border-b border-black/10 pb-5">
+    <section className="w-full rounded-lg border border-white/60 bg-white/[0.56] p-5 shadow-[0_28px_95px_rgba(80,104,231,0.16),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-2xl sm:p-6">
+      <div className="flex items-center gap-3 border-b border-white/60 pb-5">
         <Image
           src="/images/brand/logotype-dark.png"
           alt="ZenfulNote"
@@ -130,7 +127,7 @@ function loginForm(error?: string) {
           className="h-auto w-32 [filter:brightness(0)]"
           priority
         />
-        <span className="rounded-full border border-black/10 bg-[#f8f6ef] px-3 py-1 text-xs font-semibold text-black/68">
+        <span className="rounded-full border border-white/60 bg-white/46 px-3 py-1 text-xs font-semibold text-black/68 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
           Admin
         </span>
       </div>
@@ -143,7 +140,7 @@ function loginForm(error?: string) {
             name="password"
             type="password"
             autoComplete="current-password"
-            className="min-h-12 rounded-lg border border-black/15 bg-white px-3 text-sm text-black outline-none transition placeholder:text-black/35 focus:border-[#5068e7]"
+            className="min-h-12 rounded-lg border border-white/70 bg-white/58 px-3 text-sm text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] outline-none transition placeholder:text-black/35 focus:border-[#5068e7] focus:bg-white/78"
             placeholder="Enter admin password"
           />
         </label>
@@ -152,7 +149,7 @@ function loginForm(error?: string) {
             That password did not work.
           </p>
         ) : null}
-        <button className="min-h-12 rounded-lg bg-black px-5 text-sm font-semibold text-white transition hover:bg-[#292929]">
+        <button className="min-h-12 rounded-full bg-black px-5 text-sm font-semibold text-white shadow-[0_16px_42px_rgba(0,0,0,0.20)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#292929] hover:shadow-[0_22px_58px_rgba(0,0,0,0.28)]">
           Sign in
         </button>
       </form>
@@ -162,7 +159,7 @@ function loginForm(error?: string) {
 
 function adminSetupState() {
   return (
-    <section className="w-full rounded-lg border border-black/10 bg-white/[0.88] p-6 shadow-[0_22px_80px_rgba(0,0,0,0.1)] backdrop-blur">
+    <section className="w-full rounded-lg border border-white/60 bg-white/[0.58] p-6 shadow-[0_28px_95px_rgba(80,104,231,0.16),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-2xl">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/58">
         Admin setup
       </p>
