@@ -44,6 +44,10 @@ import type {
   GrowthContentRow,
   GrowthDashboardData,
   GrowthHealthCheck,
+  GrowthOutreachAudience,
+  GrowthOutreachData,
+  GrowthOutreachDrip,
+  GrowthOutreachTemplate,
   GrowthReadiness,
   GrowthTrendPoint,
 } from "@/lib/growth-dashboard";
@@ -66,12 +70,13 @@ type AdminPageKey =
   | "overview"
   | "retention"
   | "events"
-  | "lifecycle"
+  | "outreach"
   | "content"
   | "blogs"
   | "system";
 
 type ContentKey = "meditations" | "exercises" | "audio" | "affirmations" | "quotes" | "journals";
+type OutreachViewKey = "performance" | "templates" | "drips" | "audiences" | "email" | "notifications";
 
 type DetailView = {
   eyebrow?: string;
@@ -94,6 +99,31 @@ type ContentEditorState = {
   error?: string;
 };
 
+type OutreachTemplateForm = {
+  id?: number;
+  name: string;
+  channel: "email" | "push";
+  category: string;
+  status: "draft" | "active" | "archived";
+  subject: string;
+  preview_text: string;
+  body: string;
+};
+
+type OutreachDripForm = {
+  id?: number;
+  name: string;
+  status: "draft" | "active" | "paused" | "archived";
+  audience_key: string;
+  goal: string;
+  description: string;
+  step_name: string;
+  step_channel: "email" | "push";
+  step_template_id: string;
+  delay_amount: string;
+  delay_unit: "minutes" | "hours" | "days";
+};
+
 const periodOptions = [7, 14, 30, 60, 90] as const;
 const retentionTargets = {
   d1: 25,
@@ -105,10 +135,19 @@ const pages: Array<{ key: AdminPageKey; label: string; icon: LucideIcon }> = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
   { key: "retention", label: "Retention", icon: HeartPulse },
   { key: "events", label: "Events", icon: ClipboardList },
-  { key: "lifecycle", label: "Lifecycle", icon: Mail },
+  { key: "outreach", label: "Outreach", icon: Mail },
   { key: "content", label: "Content", icon: BookOpen },
   { key: "blogs", label: "Blogs", icon: FileText },
   { key: "system", label: "System", icon: ShieldCheck },
+];
+
+const outreachViews: Array<{ key: OutreachViewKey; label: string }> = [
+  { key: "performance", label: "Performance" },
+  { key: "templates", label: "Templates" },
+  { key: "drips", label: "Drips" },
+  { key: "audiences", label: "Audiences" },
+  { key: "email", label: "Email stream" },
+  { key: "notifications", label: "Notifications" },
 ];
 
 const contentTabs: Array<{ key: ContentKey; label: string; icon: LucideIcon }> = [
@@ -131,15 +170,19 @@ export function AdminConsole({
 }: AdminConsoleProps) {
   const [activePage, setActivePage] = useState<AdminPageKey>("overview");
   const [contentTab, setContentTab] = useState<ContentKey>("meditations");
+  const [outreachView, setOutreachView] = useState<OutreachViewKey>("performance");
   const [periodDays, setPeriodDays] = useState(initialDashboard.period.days || 30);
   const [dashboard, setDashboard] = useState(initialDashboard);
   const [dashboardLoaded, setDashboardLoaded] = useState(dashboardInitiallyLoaded);
   const [dashboardLoading, setDashboardLoading] = useState(!dashboardInitiallyLoaded);
   const [dashboardErrorState, setDashboardErrorState] = useState(dashboardError ?? "");
+  const [outreachData, setOutreachData] = useState<GrowthOutreachData | null>(null);
+  const [outreachLoading, setOutreachLoading] = useState(false);
+  const [outreachLoaded, setOutreachLoaded] = useState(false);
+  const [outreachLoadAttempted, setOutreachLoadAttempted] = useState(false);
   const [toast, setToast] = useState<Toast | null>(
     initialNotice ?? (dashboardError ? { tone: "warning", message: dashboardError } : null),
   );
-  const [auditRunning, setAuditRunning] = useState(false);
   const [detailView, setDetailView] = useState<DetailView | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
 
@@ -202,44 +245,86 @@ export function AdminConsole({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function runAudit() {
-    const startedAt = performance.now();
-    setAuditRunning(true);
-    setToast({
-      tone: "info",
-      sticky: true,
-      message: "Lifecycle audit is running. This can take 15-20 seconds while the backend checks email, push, automation, and event health.",
-    });
+  async function refreshOutreach({ quiet = false }: { quiet?: boolean } = {}) {
+    setOutreachLoading(true);
+    setOutreachLoadAttempted(true);
+    if (!quiet) {
+      setToast({ tone: "info", sticky: true, message: "Refreshing outreach workspace." });
+    }
 
     try {
-      const response = await fetch("/api/admin/growth/lifecycle?format=json", {
-        method: "POST",
+      const response = await fetch("/api/admin/growth/outreach", {
+        cache: "no-store",
         headers: { Accept: "application/json" },
       });
       const body = await response.json().catch(() => null);
-      const elapsed = Math.max(1, Math.round((performance.now() - startedAt) / 1000));
 
-      if (!response.ok || !body?.ok) {
-        setToast({
-          tone: "danger",
-          message: body?.error ?? `Lifecycle audit failed after ${elapsed}s.`,
-        });
+      if (!response.ok || !body?.ok || !body?.data) {
+        const message = body?.error ?? "Outreach data could not be loaded.";
+        setToast({ tone: "warning", message });
         return;
       }
 
-      setToast({
-        tone: "success",
-        message: `Lifecycle audit completed in ${elapsed}s. Updating dashboard data.`,
-      });
-      void refreshDashboard({ days: periodDays, quiet: true });
+      setOutreachData(body.data as GrowthOutreachData);
+      setOutreachLoaded(true);
+      if (!quiet) {
+        setToast({ tone: "success", message: "Outreach workspace refreshed." });
+      }
     } catch (error) {
       setToast({
         tone: "danger",
-        message: error instanceof Error ? error.message : "Lifecycle audit failed.",
+        message: error instanceof Error ? error.message : "Outreach data could not be loaded.",
       });
     } finally {
-      setAuditRunning(false);
+      setOutreachLoading(false);
     }
+  }
+
+  useEffect(() => {
+    if (activePage === "outreach" && !outreachLoaded && !outreachLoading && !outreachLoadAttempted) {
+      const timeout = window.setTimeout(() => {
+        void refreshOutreach({ quiet: true });
+      }, 0);
+      return () => window.clearTimeout(timeout);
+    }
+  }, [activePage, outreachLoaded, outreachLoading, outreachLoadAttempted]);
+
+  async function saveOutreachTemplate(payload: Partial<GrowthOutreachTemplate>, id?: number) {
+    const response = await fetch(id ? `/api/admin/growth/outreach/templates/${id}` : "/api/admin/growth/outreach/templates", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const body = await response.json().catch(() => null);
+
+    if (!response.ok || !body?.ok) {
+      throw new Error(body?.error ?? "Template save failed.");
+    }
+
+    await refreshOutreach({ quiet: true });
+    setToast({ tone: "success", message: "Template saved." });
+  }
+
+  async function saveOutreachDrip(payload: Partial<GrowthOutreachDrip>, id?: number) {
+    const response = await fetch(id ? `/api/admin/growth/outreach/drips/${id}` : "/api/admin/growth/outreach/drips", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const body = await response.json().catch(() => null);
+
+    if (!response.ok || !body?.ok) {
+      throw new Error(body?.error ?? "Drip save failed.");
+    }
+
+    await refreshOutreach({ quiet: true });
+    setToast({ tone: "success", message: "Drip saved." });
   }
 
   return (
@@ -255,8 +340,8 @@ export function AdminConsole({
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_18%_12%,rgba(80,104,231,0.20),transparent_30%),radial-gradient(circle_at_82%_18%,rgba(234,111,207,0.16),transparent_30%),linear-gradient(180deg,rgba(251,250,246,0.70),rgba(251,250,246,0.86))]" />
       <div className="flex h-full min-w-0 flex-1 flex-col">
         <header className="shrink-0 border-b border-white/55 bg-white/34 shadow-[0_12px_42px_rgba(30,32,50,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl">
-          <div className="flex min-h-16 items-center gap-3 px-3 sm:px-4">
-            <div className="flex min-w-0 items-center gap-3 pr-2">
+          <div className="relative grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 sm:px-4 lg:grid-cols-[minmax(190px,1fr)_auto_minmax(190px,1fr)]">
+            <div className="relative z-10 flex min-w-0 items-center gap-3 pr-2 lg:justify-self-start">
               <Image
                 src="/images/brand/app-icon-1024.png"
                 alt=""
@@ -278,7 +363,7 @@ export function AdminConsole({
               </div>
             </div>
 
-            <nav className="min-w-0 flex-1 overflow-x-auto">
+            <nav className="col-span-2 row-start-2 min-w-0 overflow-x-auto lg:absolute lg:left-1/2 lg:top-1/2 lg:z-0 lg:col-span-1 lg:row-start-1 lg:-translate-x-1/2 lg:-translate-y-1/2">
               <div className="mx-auto flex w-max gap-1 rounded-full border border-white/55 bg-white/36 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl">
                 {pages.map((page) => (
                   <TabButton
@@ -292,7 +377,7 @@ export function AdminConsole({
               </div>
             </nav>
 
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="relative z-10 flex shrink-0 items-center gap-2 justify-self-end lg:col-start-3">
               <PeriodControl
                 days={periodDays}
                 loading={dashboardLoading}
@@ -304,15 +389,6 @@ export function AdminConsole({
               <HeaderActionButton onClick={() => setChatOpen(true)}>
                 <MessageCircle aria-hidden="true" size={16} strokeWidth={1.9} />
                 <span className="hidden sm:inline">Ask</span>
-              </HeaderActionButton>
-              <HeaderActionButton onClick={runAudit} disabled={auditRunning}>
-                <RefreshCw
-                  aria-hidden="true"
-                  size={16}
-                  strokeWidth={1.9}
-                  className={auditRunning ? "animate-spin" : undefined}
-                />
-                <span className="hidden sm:inline">{auditRunning ? "Auditing" : "Audit"}</span>
               </HeaderActionButton>
               <form action="/api/admin/session/logout" method="post">
                 <button className="min-h-10 rounded-full bg-black px-3 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(0,0,0,0.18)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#292929] hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)] sm:px-4">
@@ -343,12 +419,18 @@ export function AdminConsole({
               <RetentionPage dashboard={dashboard} onInspect={setDetailView} />
             ) : null}
             {dashboardLoaded && activePage === "events" ? <EventsPage dashboard={dashboard} onInspect={setDetailView} /> : null}
-            {dashboardLoaded && activePage === "lifecycle" ? (
-              <LifecyclePage
-                auditRunning={auditRunning}
+            {dashboardLoaded && activePage === "outreach" ? (
+              <OutreachPage
                 dashboard={dashboard}
                 onInspect={setDetailView}
-                onAudit={runAudit}
+                onNotice={setToast}
+                onRefresh={() => void refreshOutreach()}
+                onSaveDrip={saveOutreachDrip}
+                onSaveTemplate={saveOutreachTemplate}
+                outreach={outreachData}
+                outreachLoading={outreachLoading}
+                outreachView={outreachView}
+                onOutreachViewChange={setOutreachView}
                 readiness={readiness}
               />
             ) : null}
@@ -463,7 +545,7 @@ function OverviewPage({
           detail={`${formatNumber(dashboard.emails.total)} records`}
           tone={dashboard.emails.failure_rate >= 5 ? "red" : "green"}
           onClick={() => onInspect({
-            eyebrow: "Lifecycle email",
+            eyebrow: "Outreach email",
             title: `${dashboard.emails.failure_rate}% failure rate`,
             rows: [
               { label: "Total", value: dashboard.emails.total },
@@ -711,134 +793,532 @@ function EventsPage({
   );
 }
 
-function LifecyclePage({
-  auditRunning,
+function OutreachPage({
   dashboard,
   onInspect,
-  onAudit,
+  onNotice,
+  onOutreachViewChange,
+  onRefresh,
+  onSaveDrip,
+  onSaveTemplate,
+  outreach,
+  outreachLoading,
+  outreachView,
   readiness,
 }: {
-  auditRunning: boolean;
   dashboard: GrowthDashboardData;
   onInspect: (detail: DetailView) => void;
-  onAudit: () => void;
+  onNotice: (toast: Toast) => void;
+  onOutreachViewChange: (key: OutreachViewKey) => void;
+  onRefresh: () => void;
+  onSaveDrip: (payload: Partial<GrowthOutreachDrip>, id?: number) => Promise<void>;
+  onSaveTemplate: (payload: Partial<GrowthOutreachTemplate>, id?: number) => Promise<void>;
+  outreach: GrowthOutreachData | null;
+  outreachLoading: boolean;
+  outreachView: OutreachViewKey;
   readiness: GrowthReadiness;
 }) {
   const loopsReady = readiness.integrations.loops_api_key && readiness.integrations.loops_webhook_secret;
   const sendgridReady = readiness.integrations.sendgrid_api_key;
-  const readinessStatus = loopsReady && sendgridReady ? "Ready" : "Needs setup";
-  const lastRun = dashboard.automation.last_run;
+  const readinessStatus = sendgridReady ? "Ready" : "Needs setup";
+  const summary = outreach?.summary;
+  const performance = outreach?.performance;
 
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden">
-      <div className="flex justify-end gap-2 overflow-x-auto">
-        <button
-          type="button"
-          onClick={() => onInspect({
-            eyebrow: "Vendor readiness",
-            title: readinessStatus,
-            rows: [
-              { label: "Loops", value: loopsReady ? "Ready" : "Missing key or webhook secret" },
-              { label: "SendGrid", value: sendgridReady ? "Ready" : "Missing API key" },
-              ...dashboard.vendor_health.map((check) => ({ label: check.label, value: `${titleCase(check.status)}: ${check.detail}` })),
-            ],
-          })}
-          className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-white/60 bg-white/50 px-3 text-sm font-semibold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] transition duration-200 hover:-translate-y-0.5 hover:border-white/85 hover:bg-white/75 hover:shadow-[0_16px_42px_rgba(80,104,231,0.16)]"
-        >
-          <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.9} />
-          {readinessStatus}
-        </button>
-        <button
-          type="button"
-          onClick={() => onInspect({
-            eyebrow: "Automation runs",
-            title: lastRun ? `${titleCase(lastRun.status)} audit` : "No automation runs",
-            rows: [
-              { label: "Last run", value: lastRun?.finished_at ? formatDateTime(lastRun.finished_at) : "Not run" },
-              { label: "Recent runs", value: dashboard.automation.recent_runs.length },
-              { label: "Health score", value: lastRun?.health_score ?? "n/a" },
-            ],
-          })}
-          className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-white/60 bg-white/50 px-3 text-sm font-semibold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] transition duration-200 hover:-translate-y-0.5 hover:border-white/85 hover:bg-white/75 hover:shadow-[0_16px_42px_rgba(80,104,231,0.16)]"
-        >
-          <RefreshCw aria-hidden="true" size={16} strokeWidth={1.9} />
-          {lastRun ? titleCase(lastRun.status) : "No audit"}
-        </button>
-        <button
-          type="button"
-          onClick={onAudit}
-          disabled={auditRunning}
-          className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#292929] hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:cursor-wait disabled:opacity-65"
-        >
-          <RefreshCw
-            aria-hidden="true"
-            size={16}
-            strokeWidth={1.9}
-            className={auditRunning ? "animate-spin" : undefined}
+      <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          <OutreachSummaryCard icon={Mail} label="Emailable" value={formatNumber(summary?.emailable_users ?? 0)} detail="eligible addresses" />
+          <OutreachSummaryCard icon={Send} label="Push reach" value={formatNumber(summary?.push_reachable_users ?? 0)} detail="available tokens" />
+          <OutreachSummaryCard icon={FileText} label="Templates" value={formatNumber((summary?.active_templates ?? 0) + (summary?.draft_templates ?? 0))} detail={`${formatNumber(summary?.active_templates ?? 0)} active`} />
+          <OutreachSummaryCard icon={Zap} label="Drips" value={formatNumber((summary?.active_drips ?? 0) + (summary?.draft_drips ?? 0))} detail={`${formatNumber(summary?.active_drips ?? 0)} active`} />
+          <OutreachSummaryCard
+            icon={ShieldCheck}
+            label="Delivery"
+            value={readinessStatus}
+            detail={`SendGrid ${sendgridReady ? "ready" : "missing"} / Loops ${loopsReady ? "ready" : "optional"}`}
+            onClick={() => onInspect({
+              eyebrow: "Outreach readiness",
+              title: readinessStatus,
+              rows: [
+                { label: "SendGrid", value: sendgridReady ? "Ready" : "Missing API key" },
+                { label: "Loops", value: loopsReady ? "Ready" : "Optional / not fully configured" },
+                { label: "Email failure rate", value: `${performance?.email_failure_rate ?? dashboard.emails.failure_rate}%` },
+              ],
+            })}
           />
-          {auditRunning ? "Auditing" : "Run audit"}
-        </button>
+        </div>
+        <div className="flex items-center gap-2 justify-self-end">
+          <label className="sr-only" htmlFor="outreach-view">Outreach view</label>
+          <div className="relative">
+            <select
+              id="outreach-view"
+              aria-label="Outreach view"
+              value={outreachView}
+              onChange={(event) => onOutreachViewChange(event.target.value as OutreachViewKey)}
+              className="min-h-10 appearance-none rounded-full border border-white/60 bg-white/52 px-4 pr-9 text-sm font-semibold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] outline-none transition hover:bg-white/74 focus:border-[#5068e7]"
+            >
+              {outreachViews.map((view) => (
+                <option key={view.key} value={view.key}>{view.label}</option>
+              ))}
+            </select>
+            <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-black/48" size={15} />
+          </div>
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={outreachLoading}
+            className="grid size-10 place-items-center rounded-full border border-white/60 bg-white/52 text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] transition hover:-translate-y-0.5 hover:bg-white/74 hover:shadow-[0_16px_42px_rgba(80,104,231,0.14)] disabled:cursor-wait disabled:opacity-60"
+            aria-label="Refresh outreach"
+          >
+            <RefreshCw aria-hidden="true" size={16} strokeWidth={1.9} className={outreachLoading ? "animate-spin" : undefined} />
+          </button>
+        </div>
       </div>
 
-      <div className="grid min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] xl:overflow-hidden">
-      <div className="grid min-h-0 gap-3">
-        <Panel title="Lifecycle Email" eyebrow="Delivery mix" icon={Mail}>
-          <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-            <div className="grid gap-2 sm:grid-cols-4">
-              <TinyStat label="Total email" value={formatNumber(dashboard.emails.total)} />
-              <TinyStat label="Growth sends" value={formatNumber(dashboard.emails.growth_total)} />
-              <TinyStat label="Failed" value={formatNumber(dashboard.emails.failed)} />
-              <TinyStat label="Failure rate" value={`${dashboard.emails.failure_rate}%`} />
-            </div>
-            <ScrollStack>
-              <EmailStatusBars
-                emails={dashboard.emails.by_type}
-                onInspect={(email) => onInspect({
-                  eyebrow: "Email cohort",
-                  title: `${email.email_type} / ${email.status}`,
-                  rows: [
-                    { label: "Type", value: email.email_type },
-                    { label: "Status", value: email.status },
-                    { label: "Count", value: email.count },
-                  ],
-                })}
-              />
-            </ScrollStack>
-          </div>
-        </Panel>
+      <div className="min-h-0 overflow-hidden">
+        {outreachView === "performance" ? <OutreachPerformanceView dashboard={dashboard} onInspect={onInspect} outreach={outreach} /> : null}
+        {outreachView === "templates" ? <OutreachTemplatesView onNotice={onNotice} onSaveTemplate={onSaveTemplate} outreach={outreach} /> : null}
+        {outreachView === "drips" ? <OutreachDripsView onNotice={onNotice} onSaveDrip={onSaveDrip} outreach={outreach} /> : null}
+        {outreachView === "audiences" ? <OutreachAudiencesView audiences={outreach?.audiences ?? []} onInspect={onInspect} /> : null}
+        {outreachView === "email" ? <OutreachEmailView dashboard={dashboard} onInspect={onInspect} outreach={outreach} /> : null}
+        {outreachView === "notifications" ? <OutreachNotificationsView dashboard={dashboard} onInspect={onInspect} /> : null}
       </div>
-      <div className="grid min-h-0 gap-3 xl:grid-rows-[minmax(0,0.58fr)_minmax(0,0.42fr)]">
+    </div>
+  );
+}
+
+function OutreachSummaryCard({
+  detail,
+  icon: Icon,
+  label,
+  onClick,
+  value,
+}: {
+  detail: string;
+  icon: LucideIcon;
+  label: string;
+  onClick?: () => void;
+  value: string;
+}) {
+  const content = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <p className="truncate text-xs font-semibold uppercase tracking-[0.1em] text-black/46">{label}</p>
+        <Icon aria-hidden="true" size={15} strokeWidth={1.9} className="shrink-0 text-[#5068e7]" />
+      </div>
+      <p className="mt-1 truncate text-xl font-semibold tabular-nums text-black">{value}</p>
+      <p className="truncate text-xs text-black/52">{detail}</p>
+    </>
+  );
+  const className = "min-h-[86px] rounded-lg border border-white/58 bg-white/42 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:bg-white/60 hover:shadow-[0_18px_48px_rgba(80,104,231,0.13)]";
+
+  if (onClick) {
+    return <button type="button" onClick={onClick} className={className}>{content}</button>;
+  }
+
+  return <div className={className}>{content}</div>;
+}
+
+function OutreachPerformanceView({
+  dashboard,
+  onInspect,
+  outreach,
+}: {
+  dashboard: GrowthDashboardData;
+  onInspect: (detail: DetailView) => void;
+  outreach: GrowthOutreachData | null;
+}) {
+  const performance = outreach?.performance;
+
+  return (
+    <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] xl:overflow-hidden">
+      <Panel title="Delivery Performance" eyebrow="Email and push health" icon={TrendingUp}>
+        <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+          <div className="grid gap-2 sm:grid-cols-4">
+            <TinyStat label="Email sent" value={formatNumber(performance?.email_sent ?? dashboard.emails.sent)} />
+            <TinyStat label="Open rate" value={`${performance?.email_open_rate ?? 0}%`} />
+            <TinyStat label="Click rate" value={`${performance?.email_click_rate ?? 0}%`} />
+            <TinyStat label="Push records" value={formatNumber(performance?.push_total ?? dashboard.notifications.total)} />
+          </div>
+          <ScrollStack>
+            <EmailStatusBars
+              emails={dashboard.emails.by_type}
+              onInspect={(email) => onInspect({
+                eyebrow: "Email cohort",
+                title: `${labelize(email.email_type)} / ${labelize(email.status)}`,
+                rows: [
+                  { label: "Type", value: email.email_type },
+                  { label: "Status", value: email.status },
+                  { label: "Count", value: email.count },
+                ],
+              })}
+            />
+          </ScrollStack>
+        </div>
+      </Panel>
+      <div className="grid min-h-0 gap-3 xl:grid-rows-[minmax(0,0.52fr)_minmax(0,0.48fr)]">
+        <Panel title="Status Mix" eyebrow="Send outcomes" icon={BarChart3}>
+          <ScrollStack>
+            {(performance?.status_mix ?? []).map((status) => (
+              <SignalRow key={status.status} title={labelize(status.status)} value={formatNumber(status.count)} />
+            ))}
+            {!performance?.status_mix?.length ? (
+              <QuietState icon={AlertTriangle} title="No status mix" detail="Email status rows will appear after outreach sends are logged." tone="warn" />
+            ) : null}
+          </ScrollStack>
+        </Panel>
         <Panel title="Recent Email Stream" eyebrow="Actual sends" icon={Send}>
           <EmailRecentStream emails={dashboard.emails.recent} onInspect={onInspect} />
         </Panel>
-        <Panel title="Notifications" eyebrow="Push outreach" icon={Send}>
-            <ScrollStack>
-              <TinyStat label="Total push records" value={formatNumber(dashboard.notifications.total)} />
-              {dashboard.notifications.by_type.map((notification) => (
-                <SignalRow
-                  key={notification.notification_type}
-                  title={labelize(notification.notification_type)}
-                  value={formatNumber(notification.count)}
-                  onClick={() => onInspect({
-                    eyebrow: "Notification",
-                    title: labelize(notification.notification_type),
-                    rows: [{ label: "Count", value: notification.count }],
-                  })}
-                />
-              ))}
-              {!dashboard.notifications.by_type.length ? (
-                <QuietState
-                  icon={AlertTriangle}
-                  title="No notification rows"
-                  detail="Push outreach will appear after notification logs are recorded."
-                  tone="warn"
-                />
-              ) : null}
-            </ScrollStack>
-        </Panel>
-      </div>
       </div>
     </div>
+  );
+}
+
+function OutreachTemplatesView({
+  onNotice,
+  onSaveTemplate,
+  outreach,
+}: {
+  onNotice: (toast: Toast) => void;
+  onSaveTemplate: (payload: Partial<GrowthOutreachTemplate>, id?: number) => Promise<void>;
+  outreach: GrowthOutreachData | null;
+}) {
+  const [form, setForm] = useState<OutreachTemplateForm>(emptyTemplateForm());
+  const [saving, setSaving] = useState(false);
+  const [drafting, setDrafting] = useState(false);
+  const templates = outreach?.templates ?? [];
+
+  async function submitTemplate(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      await onSaveTemplate(templatePayloadFromForm(form), form.id);
+      setForm(emptyTemplateForm());
+    } catch (error) {
+      onNotice({ tone: "danger", message: error instanceof Error ? error.message : "Template save failed." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function draftTemplate() {
+    setDrafting(true);
+    try {
+      const response = await fetch("/api/admin/growth/outreach/draft", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          audience: form.category || "inactive users",
+          channel: form.channel,
+          goal: form.subject || form.name || "bring users back to one mindful check-in",
+          tone: "warm, concise, ZenfulNote branded",
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok || !body?.data) {
+        throw new Error(body?.error ?? "Draft generation failed.");
+      }
+      setForm((current) => ({
+        ...current,
+        name: current.name || body.data.name || "",
+        subject: body.data.subject ?? current.subject,
+        preview_text: body.data.preview_text ?? current.preview_text,
+        body: body.data.body ?? current.body,
+      }));
+      onNotice({ tone: "success", message: "Draft generated. Review it before activating." });
+    } catch (error) {
+      onNotice({ tone: "danger", message: error instanceof Error ? error.message : "Draft generation failed." });
+    } finally {
+      setDrafting(false);
+    }
+  }
+
+  return (
+    <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(420px,0.86fr)_minmax(0,1.14fr)] xl:overflow-hidden">
+      <Panel title={form.id ? "Edit Template" : "Create Template"} eyebrow="Email or push copy" icon={FileText}>
+        <form onSubmit={submitTemplate} className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
+          <div className="grid min-h-0 gap-3 overflow-y-auto pr-1">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <OutreachInput label="Name" value={form.name} onChange={(value) => setForm((current) => ({ ...current, name: value }))} />
+              <OutreachSelect
+                label="Channel"
+                value={form.channel}
+                onChange={(value) => setForm((current) => ({ ...current, channel: value as "email" | "push" }))}
+                options={[["email", "Email"], ["push", "Push notification"]]}
+              />
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <OutreachInput label="Category" value={form.category} onChange={(value) => setForm((current) => ({ ...current, category: value }))} placeholder="onboarding, streak, trial" />
+              <OutreachSelect
+                label="Status"
+                value={form.status}
+                onChange={(value) => setForm((current) => ({ ...current, status: value as OutreachTemplateForm["status"] }))}
+                options={[["draft", "Draft"], ["active", "Active"], ["archived", "Archived"]]}
+              />
+            </div>
+            <OutreachInput label={form.channel === "push" ? "Push title" : "Subject"} value={form.subject} onChange={(value) => setForm((current) => ({ ...current, subject: value }))} />
+            <OutreachInput label="Preview text" value={form.preview_text} onChange={(value) => setForm((current) => ({ ...current, preview_text: value }))} />
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Body</span>
+              <textarea
+                aria-label="Body"
+                value={form.body}
+                onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))}
+                placeholder="Write the editable outreach body here. Use {{first_name}} and {{deep_link}} variables."
+                className="min-h-56 resize-none rounded-lg border border-white/65 bg-white/46 px-3 py-2.5 text-sm leading-6 text-black outline-none transition placeholder:text-black/34 focus:border-[#5068e7] focus:bg-white/68"
+              />
+            </label>
+          </div>
+          <div className="flex flex-wrap justify-between gap-2 border-t border-white/55 pt-3">
+            <button type="button" onClick={() => setForm(emptyTemplateForm())} className="min-h-10 rounded-full border border-white/65 bg-white/42 px-4 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_12px_32px_rgba(0,0,0,0.12)]">
+              New
+            </button>
+            <div className="flex gap-2">
+              <button type="button" onClick={draftTemplate} disabled={drafting} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/65 bg-white/50 px-4 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(80,104,231,0.14)] disabled:cursor-wait disabled:opacity-60">
+                <Sparkles aria-hidden="true" size={15} strokeWidth={1.9} />
+                {drafting ? "Drafting" : "Draft"}
+              </button>
+              <button type="submit" disabled={saving || !form.name.trim()} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:cursor-not-allowed disabled:opacity-55">
+                <Save aria-hidden="true" size={15} strokeWidth={1.9} />
+                {saving ? "Saving" : "Save"}
+              </button>
+            </div>
+          </div>
+        </form>
+      </Panel>
+      <Panel title="Template Library" eyebrow={`${formatNumber(templates.length)} saved`} icon={ClipboardList}>
+        <ScrollStack>
+          {templates.map((template) => (
+            <SignalRow
+              key={template.id}
+              title={template.name}
+              detail={`${labelize(template.channel)} / ${labelize(template.status)}${template.category ? ` / ${template.category}` : ""}`}
+              value={template.updated_at ? formatDateTime(template.updated_at) : `#${template.id}`}
+              onClick={() => setForm(templateFormFromTemplate(template))}
+            />
+          ))}
+          {!templates.length ? (
+            <QuietState icon={AlertTriangle} title="No templates yet" detail="Create the first email or push template from the editor." tone="warn" />
+          ) : null}
+        </ScrollStack>
+      </Panel>
+    </div>
+  );
+}
+
+function OutreachDripsView({
+  onNotice,
+  onSaveDrip,
+  outreach,
+}: {
+  onNotice: (toast: Toast) => void;
+  onSaveDrip: (payload: Partial<GrowthOutreachDrip>, id?: number) => Promise<void>;
+  outreach: GrowthOutreachData | null;
+}) {
+  const [form, setForm] = useState<OutreachDripForm>(emptyDripForm());
+  const [saving, setSaving] = useState(false);
+  const drips = outreach?.drips ?? [];
+  const templates = outreach?.templates ?? [];
+  const audiences = outreach?.audiences ?? [];
+
+  async function submitDrip(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      await onSaveDrip(dripPayloadFromForm(form), form.id);
+      setForm(emptyDripForm());
+    } catch (error) {
+      onNotice({ tone: "danger", message: error instanceof Error ? error.message : "Drip save failed." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(420px,0.84fr)_minmax(0,1.16fr)] xl:overflow-hidden">
+      <Panel title={form.id ? "Edit Drip" : "Create Drip"} eyebrow="Outreach sequence" icon={Zap}>
+        <form onSubmit={submitDrip} className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
+          <div className="grid min-h-0 gap-3 overflow-y-auto pr-1">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <OutreachInput label="Name" value={form.name} onChange={(value) => setForm((current) => ({ ...current, name: value }))} />
+              <OutreachSelect
+                label="Status"
+                value={form.status}
+                onChange={(value) => setForm((current) => ({ ...current, status: value as OutreachDripForm["status"] }))}
+                options={[["draft", "Draft"], ["active", "Active"], ["paused", "Paused"], ["archived", "Archived"]]}
+              />
+            </div>
+            <OutreachSelect
+              label="Audience"
+              value={form.audience_key}
+              onChange={(value) => setForm((current) => ({ ...current, audience_key: value }))}
+              options={[["", "Choose audience"], ...audiences.map((audience) => [audience.key, audience.label] as [string, string])]}
+            />
+            <OutreachInput label="Goal" value={form.goal} onChange={(value) => setForm((current) => ({ ...current, goal: value }))} placeholder="Increase D7 retention, rescue streaks..." />
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Description</span>
+              <textarea
+                value={form.description}
+                onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+                className="min-h-24 resize-none rounded-lg border border-white/65 bg-white/46 px-3 py-2.5 text-sm leading-6 text-black outline-none transition focus:border-[#5068e7] focus:bg-white/68"
+              />
+            </label>
+            <div className="rounded-lg border border-white/55 bg-white/36 p-3">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-black/48">First step</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <OutreachInput label="Step name" value={form.step_name} onChange={(value) => setForm((current) => ({ ...current, step_name: value }))} />
+                <OutreachSelect
+                  label="Channel"
+                  value={form.step_channel}
+                  onChange={(value) => setForm((current) => ({ ...current, step_channel: value as "email" | "push" }))}
+                  options={[["email", "Email"], ["push", "Push notification"]]}
+                />
+              </div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_90px_120px]">
+                <OutreachSelect
+                  label="Template"
+                  value={form.step_template_id}
+                  onChange={(value) => setForm((current) => ({ ...current, step_template_id: value }))}
+                  options={[["", "No template"], ...templates.map((template) => [String(template.id), template.name] as [string, string])]}
+                />
+                <OutreachInput label="Delay" value={form.delay_amount} onChange={(value) => setForm((current) => ({ ...current, delay_amount: value.replace(/\D/g, "") }))} />
+                <OutreachSelect
+                  label="Unit"
+                  value={form.delay_unit}
+                  onChange={(value) => setForm((current) => ({ ...current, delay_unit: value as OutreachDripForm["delay_unit"] }))}
+                  options={[["minutes", "Minutes"], ["hours", "Hours"], ["days", "Days"]]}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-between gap-2 border-t border-white/55 pt-3">
+            <button type="button" onClick={() => setForm(emptyDripForm())} className="min-h-10 rounded-full border border-white/65 bg-white/42 px-4 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_12px_32px_rgba(0,0,0,0.12)]">
+              New
+            </button>
+            <button type="submit" disabled={saving || !form.name.trim()} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:cursor-not-allowed disabled:opacity-55">
+              <Save aria-hidden="true" size={15} strokeWidth={1.9} />
+              {saving ? "Saving" : "Save"}
+            </button>
+          </div>
+        </form>
+      </Panel>
+      <Panel title="Drip Library" eyebrow={`${formatNumber(drips.length)} saved`} icon={ClipboardList}>
+        <ScrollStack>
+          {drips.map((drip) => (
+            <SignalRow
+              key={drip.id}
+              title={drip.name}
+              detail={`${labelize(drip.status)} / ${drip.audience_key ? labelize(drip.audience_key) : "no audience"} / ${formatNumber(drip.steps?.length ?? 0)} steps`}
+              value={drip.updated_at ? formatDateTime(drip.updated_at) : `#${drip.id}`}
+              onClick={() => setForm(dripFormFromDrip(drip))}
+            />
+          ))}
+          {!drips.length ? (
+            <QuietState icon={AlertTriangle} title="No drips yet" detail="Create a drip shell and connect templates to start sequencing outreach." tone="warn" />
+          ) : null}
+        </ScrollStack>
+      </Panel>
+    </div>
+  );
+}
+
+function OutreachAudiencesView({
+  audiences,
+  onInspect,
+}: {
+  audiences: GrowthOutreachAudience[];
+  onInspect: (detail: DetailView) => void;
+}) {
+  return (
+    <Panel title="Audiences" eyebrow="Estimated reachable cohorts" icon={Users}>
+      <ScrollStack>
+        {audiences.map((audience) => (
+          <SignalRow
+            key={audience.key}
+            title={audience.label}
+            detail={audience.description}
+            value={formatNumber(audience.count)}
+            onClick={() => onInspect({
+              eyebrow: "Audience",
+              title: audience.label,
+              rows: [
+                { label: "Key", value: audience.key },
+                { label: "Users", value: audience.count },
+                { label: "Description", value: audience.description },
+              ],
+            })}
+          />
+        ))}
+        {!audiences.length ? (
+          <QuietState icon={AlertTriangle} title="No audience estimates" detail="The backend outreach endpoint is not returning audience counts yet." tone="warn" />
+        ) : null}
+      </ScrollStack>
+    </Panel>
+  );
+}
+
+function OutreachEmailView({
+  dashboard,
+  onInspect,
+  outreach,
+}: {
+  dashboard: GrowthDashboardData;
+  onInspect: (detail: DetailView) => void;
+  outreach: GrowthOutreachData | null;
+}) {
+  return (
+    <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] xl:overflow-hidden">
+      <Panel title="Email Delivery Mix" eyebrow="Template and status volume" icon={Mail}>
+        <ScrollStack>
+          <div className="grid gap-2 sm:grid-cols-4">
+            <TinyStat label="Total email" value={formatNumber(outreach?.performance.email_total ?? dashboard.emails.total)} />
+            <TinyStat label="Failed" value={formatNumber(outreach?.performance.email_failed ?? dashboard.emails.failed)} />
+            <TinyStat label="Failure rate" value={`${outreach?.performance.email_failure_rate ?? dashboard.emails.failure_rate}%`} />
+            <TinyStat label="Open rate" value={`${outreach?.performance.email_open_rate ?? 0}%`} />
+          </div>
+          <EmailStatusBars emails={dashboard.emails.by_type} onInspect={(email) => onInspect({ eyebrow: "Email", title: labelize(email.email_type), rows: [{ label: "Status", value: email.status }, { label: "Count", value: email.count }] })} />
+        </ScrollStack>
+      </Panel>
+      <Panel title="Recent Email Stream" eyebrow="Actual sends" icon={Send}>
+        <EmailRecentStream emails={dashboard.emails.recent} onInspect={onInspect} />
+      </Panel>
+    </div>
+  );
+}
+
+function OutreachNotificationsView({
+  dashboard,
+  onInspect,
+}: {
+  dashboard: GrowthDashboardData;
+  onInspect: (detail: DetailView) => void;
+}) {
+  return (
+    <Panel title="Notifications" eyebrow="Push outreach" icon={Send}>
+      <ScrollStack>
+        <TinyStat label="Total push records" value={formatNumber(dashboard.notifications.total)} />
+        {dashboard.notifications.by_type.map((notification) => (
+          <SignalRow
+            key={notification.notification_type}
+            title={labelize(notification.notification_type)}
+            value={formatNumber(notification.count)}
+            onClick={() => onInspect({
+              eyebrow: "Notification",
+              title: labelize(notification.notification_type),
+              rows: [{ label: "Count", value: notification.count }],
+            })}
+          />
+        ))}
+        {!dashboard.notifications.by_type.length ? (
+          <QuietState icon={AlertTriangle} title="No notification rows" detail="Push outreach will appear after notification logs are recorded." tone="warn" />
+        ) : null}
+      </ScrollStack>
+    </Panel>
   );
 }
 
@@ -1199,6 +1679,7 @@ function PeriodControl({
       <CalendarDays aria-hidden="true" size={16} strokeWidth={1.9} className="text-black/58" />
       <span className="sr-only">Dashboard window</span>
       <select
+        aria-label="Dashboard window"
         value={days}
         disabled={loading}
         onChange={(event) => onChange(Number(event.target.value))}
@@ -1927,6 +2408,59 @@ function TinyStat({ label, value }: { label: string; value: string }) {
   );
 }
 
+function OutreachInput({
+  label,
+  onChange,
+  placeholder,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1.5">
+      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{label}</span>
+      <input
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="min-h-10 rounded-lg border border-white/65 bg-white/46 px-3 text-sm text-black outline-none transition placeholder:text-black/34 focus:border-[#5068e7] focus:bg-white/68"
+      />
+    </label>
+  );
+}
+
+function OutreachSelect({
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  options: Array<[string, string]>;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1.5">
+      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{label}</span>
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="min-h-10 rounded-lg border border-white/65 bg-white/46 px-3 text-sm font-semibold text-black outline-none transition focus:border-[#5068e7] focus:bg-white/68"
+      >
+        {options.map(([optionValue, optionLabel]) => (
+          <option key={optionValue} value={optionValue}>{optionLabel}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function ToastNotice({ onClose, toast }: { onClose: () => void; toast: Toast }) {
   const className = {
     success: "border-[#c8eac2] bg-[#f3fbf1] text-[#176e0f]",
@@ -2413,6 +2947,114 @@ function DashboardSkeleton({ error, loading }: { error?: string; loading: boolea
       </div>
     </div>
   );
+}
+
+function emptyTemplateForm(): OutreachTemplateForm {
+  return {
+    name: "",
+    channel: "email",
+    category: "",
+    status: "draft",
+    subject: "",
+    preview_text: "",
+    body: "",
+  };
+}
+
+function templateFormFromTemplate(template: GrowthOutreachTemplate): OutreachTemplateForm {
+  return {
+    id: template.id,
+    name: template.name ?? "",
+    channel: template.channel === "push" ? "push" : "email",
+    category: template.category ?? "",
+    status: template.status === "active" || template.status === "archived" ? template.status : "draft",
+    subject: template.subject ?? "",
+    preview_text: template.preview_text ?? "",
+    body: template.body ?? "",
+  };
+}
+
+function templatePayloadFromForm(form: OutreachTemplateForm): Partial<GrowthOutreachTemplate> {
+  return {
+    name: form.name.trim(),
+    channel: form.channel,
+    category: form.category.trim() || null,
+    status: form.status,
+    subject: form.subject.trim() || null,
+    preview_text: form.preview_text.trim() || null,
+    body: form.body,
+    variables: extractTemplateVariables(`${form.subject}\n${form.preview_text}\n${form.body}`),
+  };
+}
+
+function emptyDripForm(): OutreachDripForm {
+  return {
+    name: "",
+    status: "draft",
+    audience_key: "",
+    goal: "",
+    description: "",
+    step_name: "First touch",
+    step_channel: "email",
+    step_template_id: "",
+    delay_amount: "0",
+    delay_unit: "hours",
+  };
+}
+
+function dripFormFromDrip(drip: GrowthOutreachDrip): OutreachDripForm {
+  const step = drip.steps?.[0];
+
+  return {
+    id: drip.id,
+    name: drip.name ?? "",
+    status: drip.status === "active" || drip.status === "paused" || drip.status === "archived" ? drip.status : "draft",
+    audience_key: drip.audience_key ?? "",
+    goal: drip.goal ?? "",
+    description: drip.description ?? "",
+    step_name: step?.name ?? "First touch",
+    step_channel: step?.channel === "push" ? "push" : "email",
+    step_template_id: step?.template_id ? String(step.template_id) : "",
+    delay_amount: String(step?.delay_amount ?? 0),
+    delay_unit: step?.delay_unit === "minutes" || step?.delay_unit === "days" ? step.delay_unit : "hours",
+  };
+}
+
+function dripPayloadFromForm(form: OutreachDripForm): Partial<GrowthOutreachDrip> {
+  const delayAmount = Number(form.delay_amount || 0);
+  const hasStep = Boolean(form.step_name.trim() || form.step_template_id);
+
+  return {
+    name: form.name.trim(),
+    status: form.status,
+    audience_key: form.audience_key || null,
+    goal: form.goal.trim() || null,
+    description: form.description.trim() || null,
+    channel_mix: {
+      email: form.step_channel === "email" ? 1 : 0,
+      push: form.step_channel === "push" ? 1 : 0,
+    },
+    steps: hasStep
+      ? [
+          {
+            name: form.step_name.trim() || "First touch",
+            channel: form.step_channel,
+            template_id: form.step_template_id ? Number(form.step_template_id) : null,
+            delay_amount: Number.isFinite(delayAmount) ? delayAmount : 0,
+            delay_unit: form.delay_unit,
+            status: "active",
+          },
+        ]
+      : [],
+  };
+}
+
+function extractTemplateVariables(text: string) {
+  const variables = new Set<string>();
+  for (const match of text.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)) {
+    variables.add(match[1]);
+  }
+  return Array.from(variables);
 }
 
 const chartColors = ["#5068e7", "#209d13", "#ea6fcf", "#f9bc2c", "#f45253", "#111111"];

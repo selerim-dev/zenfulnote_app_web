@@ -185,9 +185,91 @@ export type GrowthContentRow = {
   };
 };
 
+export type GrowthOutreachTemplate = {
+  id: number;
+  name: string;
+  slug: string;
+  channel: "email" | "push" | string;
+  category?: string | null;
+  status: "draft" | "active" | "archived" | string;
+  subject?: string | null;
+  preview_text?: string | null;
+  body?: string | null;
+  variables?: string[] | Record<string, unknown> | null;
+  ai_metadata?: Record<string, unknown> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type GrowthOutreachStep = {
+  id?: number;
+  drip_id?: number;
+  template_id?: number | null;
+  name: string;
+  channel: "email" | "push" | string;
+  trigger_key?: string | null;
+  delay_amount: number;
+  delay_unit: "minutes" | "hours" | "days" | string;
+  status: "active" | "paused" | string;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type GrowthOutreachDrip = {
+  id: number;
+  name: string;
+  slug: string;
+  status: "draft" | "active" | "paused" | "archived" | string;
+  audience_key?: string | null;
+  goal?: string | null;
+  description?: string | null;
+  channel_mix?: Record<string, unknown> | null;
+  steps?: GrowthOutreachStep[];
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type GrowthOutreachAudience = {
+  key: string;
+  label: string;
+  count: number;
+  description: string;
+};
+
+export type GrowthOutreachData = {
+  summary: {
+    active_templates: number;
+    draft_templates: number;
+    active_drips: number;
+    draft_drips: number;
+    emailable_users: number;
+    push_reachable_users: number;
+    email_failure_rate: number;
+  };
+  templates: GrowthOutreachTemplate[];
+  drips: GrowthOutreachDrip[];
+  audiences: GrowthOutreachAudience[];
+  performance: {
+    email_total: number;
+    email_sent: number;
+    email_opened: number;
+    email_clicked: number;
+    email_failed: number;
+    email_failure_rate: number;
+    email_open_rate: number;
+    email_click_rate: number;
+    push_total: number;
+    status_mix: Array<{ status: string; count: number }>;
+    updated_at?: string | null;
+  };
+};
+
 type GrowthDashboardResult =
   | { ok: true; data: GrowthDashboardData; error?: never }
   | { ok: false; data: GrowthDashboardData; error: string };
+
+type GrowthOutreachResult =
+  | { ok: true; data: GrowthOutreachData; error?: never }
+  | { ok: false; data?: never; error: string };
 
 export async function getGrowthDashboard(days = 30): Promise<GrowthDashboardResult> {
   const key = growthDashboardKey();
@@ -303,7 +385,74 @@ export async function updateGrowthContent(type: string, id: string, formData: Fo
   return { ok: true, data: body.data as GrowthContentRow };
 }
 
-function growthEndpoint(pathname: string) {
+export async function getGrowthOutreach(): Promise<GrowthOutreachResult> {
+  const key = growthDashboardKey();
+  if (!key) {
+    return { ok: false, error: `${GROWTH_DASHBOARD_KEY_ENV} is not configured.` };
+  }
+
+  const response = await fetch(growthEndpoint("/api/internal/growth/outreach"), {
+    cache: "no-store",
+    headers: {
+      "X-Growth-Dashboard-Key": key,
+      Accept: "application/json",
+    },
+  });
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok || !body?.data) {
+    return { ok: false, error: body?.message ?? `Outreach request failed with ${response.status}.` };
+  }
+
+  return { ok: true, data: body.data as GrowthOutreachData };
+}
+
+export async function saveGrowthOutreachTemplate(
+  payload: Partial<GrowthOutreachTemplate>,
+  id?: number,
+) {
+  return saveGrowthOutreachResource<GrowthOutreachTemplate>(
+    id ? `/api/internal/growth/outreach/templates/${id}` : "/api/internal/growth/outreach/templates",
+    payload,
+  );
+}
+
+export async function saveGrowthOutreachDrip(
+  payload: Partial<GrowthOutreachDrip>,
+  id?: number,
+) {
+  return saveGrowthOutreachResource<GrowthOutreachDrip>(
+    id ? `/api/internal/growth/outreach/drips/${id}` : "/api/internal/growth/outreach/drips",
+    payload,
+  );
+}
+
+async function saveGrowthOutreachResource<T>(pathname: string, payload: unknown) {
+  const key = growthDashboardKey();
+  if (!key) {
+    return { ok: false, error: `${GROWTH_DASHBOARD_KEY_ENV} is not configured.` };
+  }
+
+  const response = await fetch(growthEndpoint(pathname), {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Growth-Dashboard-Key": key,
+      Accept: "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok || !body?.data) {
+    return { ok: false, error: body?.message ?? `Outreach save failed with ${response.status}.` };
+  }
+
+  return { ok: true, data: body.data as T };
+}
+
+export function growthEndpoint(pathname: string) {
   const baseUrl =
     process.env[BACKEND_URL_ENV]?.trim() ||
     process.env[BACKEND_URL_FALLBACK_ENV]?.trim() ||
@@ -312,7 +461,7 @@ function growthEndpoint(pathname: string) {
   return new URL(pathname.replace(/^\//, ""), normalizedBase).toString();
 }
 
-function growthDashboardKey() {
+export function growthDashboardKey() {
   return (
     process.env[GROWTH_DASHBOARD_KEY_ENV]?.trim() ||
     process.env[GROWTH_DASHBOARD_KEY_FALLBACK_ENV]?.trim() ||
