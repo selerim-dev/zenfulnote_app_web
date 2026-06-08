@@ -31,7 +31,6 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
-  Target,
   TrendingUp,
   Upload,
   Users,
@@ -46,7 +45,6 @@ import type {
   GrowthDashboardData,
   GrowthHealthCheck,
   GrowthReadiness,
-  GrowthTodo,
   GrowthTrendPoint,
 } from "@/lib/growth-dashboard";
 
@@ -153,7 +151,6 @@ export function AdminConsole({
 
   const users = dashboard.summary.users;
   const subscriptions = dashboard.summary.subscriptions;
-  const activation = dashboard.summary.activation;
   const readiness = dashboard.readiness ?? fallbackReadiness();
   const dauTrend = dashboard.activity?.daily_active_users ?? [];
   const requestTrend = dashboard.activity?.request_volume ?? [];
@@ -333,7 +330,6 @@ export function AdminConsole({
             ) : null}
             {dashboardLoaded && activePage === "overview" ? (
               <OverviewPage
-                activation={activation}
                 dashboard={dashboard}
                 dauTrend={dauTrend}
                 onInspect={setDetailView}
@@ -344,7 +340,7 @@ export function AdminConsole({
               />
             ) : null}
             {dashboardLoaded && activePage === "retention" ? (
-              <RetentionPage dashboard={dashboard} dauTrend={dauTrend} onInspect={setDetailView} requestTrend={requestTrend} />
+              <RetentionPage dashboard={dashboard} onInspect={setDetailView} />
             ) : null}
             {dashboardLoaded && activePage === "events" ? <EventsPage dashboard={dashboard} onInspect={setDetailView} /> : null}
             {dashboardLoaded && activePage === "lifecycle" ? (
@@ -381,7 +377,6 @@ export function AdminConsole({
 }
 
 function OverviewPage({
-  activation,
   dashboard,
   dauTrend,
   onInspect,
@@ -390,7 +385,6 @@ function OverviewPage({
   subscriptions,
   users,
 }: {
-  activation: Record<string, number>;
   dashboard: GrowthDashboardData;
   dauTrend: GrowthTrendPoint[];
   onInspect: (detail: DetailView) => void;
@@ -400,9 +394,7 @@ function OverviewPage({
   users: GrowthDashboardData["summary"]["users"];
 }) {
   const activeRate = users.total > 0 ? (users.active_7d / users.total) * 100 : 0;
-  const retention = users.retention;
   const eventTrend = dashboard.events.daily ?? [];
-  const dailyUsers = activation.daily_request_users ?? 0;
 
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2.5 overflow-hidden">
@@ -495,10 +487,10 @@ function OverviewPage({
         />
       </div>
 
-      <div className="grid min-h-0 gap-3 overflow-hidden xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
+      <div className="min-h-0 overflow-hidden">
       <Panel title="App Pulse" eyebrow={`${dashboard.period.days} day window`} icon={TrendingUp}>
         <div className="grid h-full min-h-0 gap-2.5 overflow-y-auto pr-1">
-          <div className="grid min-h-0 gap-3 md:grid-cols-2">
+          <div className="grid min-h-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <ChartBlock
               title="Daily active users"
               value={formatNumber(users.active_7d)}
@@ -520,68 +512,17 @@ function OverviewPage({
               color="#ea6fcf"
               onClick={() => onInspect(chartDetail("First-party growth events", formatNumber(dashboard.events.total), eventTrend, "#ea6fcf"))}
             />
-            <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-white/55 bg-white/42 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)]">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Activation users</p>
-                  <p className="mt-1 text-2xl font-semibold tabular-nums text-black">{formatNumber(dailyUsers)}</p>
-                </div>
-                <Target aria-hidden="true" className="text-[#d29a13]" size={18} strokeWidth={1.9} />
-              </div>
-              <div className="min-h-0 content-center">
-                <RetentionTargetGrid
-                  compact
-                  retention={retention}
-                  onInspect={(label, cohort) => onInspect(retentionDetail(label, cohort))}
-                />
-              </div>
-            </div>
+            <FunnelSnapshot
+              funnel={dashboard.funnel}
+              onClick={() => onInspect({
+                eyebrow: "Current funnel",
+                title: "Conversion Shape",
+                rows: dashboard.funnel.map((item) => ({ label: item.label, value: item.count })),
+              })}
+            />
           </div>
         </div>
       </Panel>
-
-      <div className="grid min-h-0 gap-3 lg:grid-cols-2 xl:grid-cols-1 xl:grid-rows-[minmax(0,0.58fr)_minmax(0,0.42fr)]">
-        <Panel title="Conversion Shape" eyebrow="Current funnel" icon={BarChart3}>
-          <button
-            type="button"
-            onClick={() => onInspect({
-              eyebrow: "Current funnel",
-              title: "Conversion Shape",
-              rows: dashboard.funnel.map((item) => ({ label: item.label, value: item.count })),
-            })}
-            className="h-full w-full text-left"
-          >
-            <ScrollStack>
-              <FunnelBars funnel={dashboard.funnel} />
-            </ScrollStack>
-          </button>
-        </Panel>
-        <Panel title="Operator Queue" eyebrow="Highest priority" icon={Sparkles}>
-          <button
-            type="button"
-            onClick={() => onInspect({
-              eyebrow: "Highest priority",
-              title: "Operator Queue",
-              rows: dashboard.health.todos.map((todo) => ({ label: todo.title, value: todo.action })),
-            })}
-            className="h-full w-full text-left"
-          >
-            <ScrollStack>
-              {dashboard.health.todos.slice(0, 7).map((todo) => (
-                <TodoRow key={`${todo.title}-${todo.action}`} todo={todo} />
-              ))}
-              {!dashboard.health.todos.length ? (
-                <QuietState
-                  icon={CheckCircle2}
-                  title="No urgent tasks"
-                  detail="The current growth checks are clear for this period."
-                  tone="good"
-                />
-              ) : null}
-            </ScrollStack>
-          </button>
-        </Panel>
-      </div>
       </div>
     </div>
   );
@@ -589,58 +530,32 @@ function OverviewPage({
 
 function RetentionPage({
   dashboard,
-  dauTrend,
   onInspect,
-  requestTrend,
 }: {
   dashboard: GrowthDashboardData;
-  dauTrend: GrowthTrendPoint[];
   onInspect: (detail: DetailView) => void;
-  requestTrend: GrowthTrendPoint[];
 }) {
   const retention = dashboard.summary.users.retention;
 
   return (
-    <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] xl:overflow-hidden">
+    <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] xl:overflow-hidden">
       <Panel title="Retention Cohorts" eyebrow="Returned after signup" icon={HeartPulse}>
-        <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
-          <div className="grid gap-2 sm:grid-cols-3">
-            <RetentionCard
-              label="Day 1"
-              cohort={retention.d1?.cohort ?? 0}
-              retained={retention.d1?.retained ?? 0}
-              rate={retention.d1?.rate ?? 0}
-              onClick={() => onInspect(retentionDetail("Day 1", retention.d1))}
-            />
-            <RetentionCard
-              label="Day 7"
-              cohort={retention.d7?.cohort ?? 0}
-              retained={retention.d7?.retained ?? 0}
-              rate={retention.d7?.rate ?? 0}
-              onClick={() => onInspect(retentionDetail("Day 7", retention.d7))}
-            />
-            <RetentionCard
-              label="Day 30"
-              cohort={retention.d30?.cohort ?? 0}
-              retained={retention.d30?.retained ?? 0}
-              rate={retention.d30?.rate ?? 0}
-              onClick={() => onInspect(retentionDetail("Day 30", retention.d30))}
-            />
-          </div>
+        <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
+          <RetentionCurveCard
+            retention={retention}
+            onClick={() => onInspect({
+              eyebrow: "Retention curve",
+              title: "Current vs Gold Standard",
+              rows: retentionCurveRows(retention),
+            })}
+          />
           <RetentionTargetGrid
             retention={retention}
             onInspect={(label, cohort) => onInspect(retentionDetail(label, cohort))}
           />
-          <ChartBlock
-            title="Daily active trend"
-            value={formatNumber(dashboard.summary.users.active_7d)}
-            data={dauTrend}
-            color="#5068e7"
-            onClick={() => onInspect(chartDetail("Daily active users", formatNumber(dashboard.summary.users.active_7d), dauTrend, "#5068e7"))}
-          />
         </div>
       </Panel>
-      <div className="grid min-h-0 gap-3 xl:grid-rows-[minmax(0,0.54fr)_minmax(0,0.46fr)]">
+      <div className="grid min-h-0 gap-3 xl:grid-rows-[minmax(0,0.62fr)_minmax(0,0.38fr)]">
         <Panel title="Activation Mix" eyebrow="Behavior loops" icon={Activity}>
           <BarSet
             items={[
@@ -652,14 +567,22 @@ function RetentionPage({
             onInspect={onInspect}
           />
         </Panel>
-        <Panel title="Backend Activity Requests" eyebrow="Request volume" icon={TrendingUp}>
-          <ChartBlock
-            title="Last 30 days"
-            value={formatNumber(dashboard.activity?.total_requests ?? 0)}
-            data={requestTrend}
-            color="#111111"
-            onClick={() => onInspect(chartDetail("Backend activity requests", formatNumber(dashboard.activity?.total_requests ?? 0), requestTrend, "#111111"))}
-          />
+        <Panel title="Cohort Counts" eyebrow="Sample quality" icon={Users}>
+          <ScrollStack>
+            {(["d1", "d7", "d30"] as const).map((key) => {
+              const cohort = retention[key];
+              return (
+                <SignalRow
+                  key={key}
+                  title={`${key.toUpperCase()} cohort`}
+                  detail={`${formatNumber(cohort?.retained ?? 0)} retained from ${formatNumber(cohort?.cohort ?? 0)} users`}
+                  value={formatPercent(cohort?.rate ?? 0)}
+                  tone={(cohort?.rate ?? 0) >= retentionTargets[key] ? "good" : "warn"}
+                  onClick={() => onInspect(retentionDetail(key.toUpperCase(), cohort))}
+                />
+              );
+            })}
+          </ScrollStack>
         </Panel>
       </div>
     </div>
@@ -803,10 +726,62 @@ function LifecyclePage({
 }) {
   const loopsReady = readiness.integrations.loops_api_key && readiness.integrations.loops_webhook_secret;
   const sendgridReady = readiness.integrations.sendgrid_api_key;
+  const readinessStatus = loopsReady && sendgridReady ? "Ready" : "Needs setup";
+  const lastRun = dashboard.automation.last_run;
 
   return (
-    <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] xl:overflow-hidden">
-      <div className="grid min-h-0 gap-3 xl:grid-rows-[minmax(0,0.58fr)_minmax(0,0.42fr)]">
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden">
+      <div className="flex justify-end gap-2 overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => onInspect({
+            eyebrow: "Vendor readiness",
+            title: readinessStatus,
+            rows: [
+              { label: "Loops", value: loopsReady ? "Ready" : "Missing key or webhook secret" },
+              { label: "SendGrid", value: sendgridReady ? "Ready" : "Missing API key" },
+              ...dashboard.vendor_health.map((check) => ({ label: check.label, value: `${titleCase(check.status)}: ${check.detail}` })),
+            ],
+          })}
+          className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-white/60 bg-white/50 px-3 text-sm font-semibold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] transition duration-200 hover:-translate-y-0.5 hover:border-white/85 hover:bg-white/75 hover:shadow-[0_16px_42px_rgba(80,104,231,0.16)]"
+        >
+          <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.9} />
+          {readinessStatus}
+        </button>
+        <button
+          type="button"
+          onClick={() => onInspect({
+            eyebrow: "Automation runs",
+            title: lastRun ? `${titleCase(lastRun.status)} audit` : "No automation runs",
+            rows: [
+              { label: "Last run", value: lastRun?.finished_at ? formatDateTime(lastRun.finished_at) : "Not run" },
+              { label: "Recent runs", value: dashboard.automation.recent_runs.length },
+              { label: "Health score", value: lastRun?.health_score ?? "n/a" },
+            ],
+          })}
+          className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-white/60 bg-white/50 px-3 text-sm font-semibold text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] transition duration-200 hover:-translate-y-0.5 hover:border-white/85 hover:bg-white/75 hover:shadow-[0_16px_42px_rgba(80,104,231,0.16)]"
+        >
+          <RefreshCw aria-hidden="true" size={16} strokeWidth={1.9} />
+          {lastRun ? titleCase(lastRun.status) : "No audit"}
+        </button>
+        <button
+          type="button"
+          onClick={onAudit}
+          disabled={auditRunning}
+          className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#292929] hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:cursor-wait disabled:opacity-65"
+        >
+          <RefreshCw
+            aria-hidden="true"
+            size={16}
+            strokeWidth={1.9}
+            className={auditRunning ? "animate-spin" : undefined}
+          />
+          {auditRunning ? "Auditing" : "Run audit"}
+        </button>
+      </div>
+
+      <div className="grid min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] xl:overflow-hidden">
+      <div className="grid min-h-0 gap-3">
         <Panel title="Lifecycle Email" eyebrow="Delivery mix" icon={Mail}>
           <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
             <div className="grid gap-2 sm:grid-cols-4">
@@ -831,81 +806,37 @@ function LifecyclePage({
             </ScrollStack>
           </div>
         </Panel>
-        <Panel title="Vendor Readiness" eyebrow="Loops and SendGrid" icon={ShieldCheck}>
-          <ScrollStack>
-            <HealthCheckRow
-              check={{
-                key: "loops",
-                label: "Loops",
-                status: loopsReady ? "ok" : "needs_setup",
-                detail: loopsReady ? "API key and webhook secret are configured." : "LOOPS_API_KEY or LOOPS_WEBHOOK_SECRET is missing.",
-              }}
-            />
-            <HealthCheckRow
-              check={{
-                key: "sendgrid",
-                label: "SendGrid",
-                status: sendgridReady ? "ok" : "needs_setup",
-                detail: sendgridReady ? "SENDGRID_API_KEY is configured." : "SENDGRID_API_KEY is missing.",
-              }}
-            />
-            {dashboard.vendor_health.map((check) => (
-              <HealthCheckRow key={check.key} check={check} />
-            ))}
-          </ScrollStack>
-        </Panel>
       </div>
       <div className="grid min-h-0 gap-3 xl:grid-rows-[minmax(0,0.58fr)_minmax(0,0.42fr)]">
         <Panel title="Recent Email Stream" eyebrow="Actual sends" icon={Send}>
           <EmailRecentStream emails={dashboard.emails.recent} onInspect={onInspect} />
         </Panel>
-        <Panel title="Automation Runs" eyebrow="Audit and recommendations" icon={RefreshCw}>
-          <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-            <button
-              type="button"
-              onClick={onAudit}
-              disabled={auditRunning}
-              className="inline-flex min-h-10 w-fit items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-[#292929] hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:cursor-wait disabled:opacity-65"
-            >
-              <RefreshCw
-                aria-hidden="true"
-                size={16}
-                strokeWidth={1.9}
-                className={auditRunning ? "animate-spin" : undefined}
-              />
-              {auditRunning ? "Audit running" : "Run audit"}
-            </button>
+        <Panel title="Notifications" eyebrow="Push outreach" icon={Send}>
             <ScrollStack>
-              {dashboard.automation.recent_runs.map((run) => (
+              <TinyStat label="Total push records" value={formatNumber(dashboard.notifications.total)} />
+              {dashboard.notifications.by_type.map((notification) => (
                 <SignalRow
-                  key={`${run.run_type}-${run.started_at}`}
-                  title={run.run_type}
-                  detail={run.finished_at ? `Finished ${formatDateTime(run.finished_at)}` : "Run in progress"}
-                  value={titleCase(run.status)}
-                  tone={run.status === "completed" ? "good" : "warn"}
+                  key={notification.notification_type}
+                  title={labelize(notification.notification_type)}
+                  value={formatNumber(notification.count)}
                   onClick={() => onInspect({
-                    eyebrow: "Automation run",
-                    title: run.run_type,
-                    rows: [
-                      { label: "Status", value: titleCase(run.status) },
-                      { label: "Health score", value: run.health_score ?? "n/a" },
-                      { label: "Started", value: run.started_at ? formatDateTime(run.started_at) : "n/a" },
-                      { label: "Finished", value: run.finished_at ? formatDateTime(run.finished_at) : "n/a" },
-                    ],
+                    eyebrow: "Notification",
+                    title: labelize(notification.notification_type),
+                    rows: [{ label: "Count", value: notification.count }],
                   })}
                 />
               ))}
-              {!dashboard.automation.recent_runs.length ? (
+              {!dashboard.notifications.by_type.length ? (
                 <QuietState
                   icon={AlertTriangle}
-                  title="No automation runs"
-                  detail="Run an audit after Loops workflows are configured."
+                  title="No notification rows"
+                  detail="Push outreach will appear after notification logs are recorded."
                   tone="warn"
                 />
               ) : null}
             </ScrollStack>
-          </div>
         </Panel>
+      </div>
       </div>
     </div>
   );
@@ -1414,32 +1345,36 @@ function LineChart({
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const rawGradientId = useId();
   const gradientId = `chart-${rawGradientId.replace(/:/g, "")}`;
+  const chartWidth = size === "large" ? 520 : 320;
+  const chartHeight = 128;
   const chart = useMemo(() => {
     const visible = data.slice(-30);
     const max = Math.max(...visible.map((point) => point.count), 1);
-    const width = 320;
-    const height = 128;
-    const xStep = visible.length > 1 ? width / (visible.length - 1) : width;
+    const xStep = visible.length > 1 ? chartWidth / (visible.length - 1) : chartWidth;
 
     return visible.map((point, index) => {
-      const x = visible.length > 1 ? index * xStep : width / 2;
-      const y = height - 10 - (point.count / max) * (height - 22);
+      const x = visible.length > 1 ? index * xStep : chartWidth / 2;
+      const y = chartHeight - 10 - (point.count / max) * (chartHeight - 22);
       return { ...point, x, y };
     });
-  }, [data]);
+  }, [chartHeight, chartWidth, data]);
   const points = chart;
 
   if (!points.length) {
     return (
-      <div className={["grid h-full place-items-center text-sm font-medium text-black/48", size === "large" ? "min-h-[420px]" : "min-h-28"].join(" ")}>
+      <div className={["grid h-full place-items-center text-sm font-medium text-black/48", size === "large" ? "min-h-[clamp(240px,38dvh,420px)]" : "min-h-28"].join(" ")}>
         No trend data
       </div>
     );
   }
 
   const path = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const area = `0,128 ${path} 320,128`;
+  const area = `0,${chartHeight} ${path} ${chartWidth},${chartHeight}`;
   const activePoint = hoverIndex === null ? null : points[hoverIndex] ?? null;
+  const lineWidth = size === "large" ? 1.35 : 2;
+  const endpointRadius = size === "large" ? 1.8 : 3;
+  const hoverRadius = size === "large" ? 2.8 : 4.5;
+  const hoverStrokeWidth = size === "large" ? 1.4 : 2;
 
   function handlePointerMove(event: React.PointerEvent<SVGSVGElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -1450,13 +1385,13 @@ function LineChart({
 
   const tooltipWidth = 118;
   const tooltipHeight = 42;
-  const tooltipX = activePoint ? Math.max(4, Math.min(320 - tooltipWidth - 4, activePoint.x - tooltipWidth / 2)) : 0;
+  const tooltipX = activePoint ? Math.max(4, Math.min(chartWidth - tooltipWidth - 4, activePoint.x - tooltipWidth / 2)) : 0;
   const tooltipY = activePoint ? (activePoint.y > 56 ? activePoint.y - tooltipHeight - 10 : activePoint.y + 14) : 0;
 
   return (
     <svg
-      viewBox="0 0 320 128"
-      className={["h-full w-full", size === "large" ? "min-h-[420px]" : "min-h-28"].join(" ")}
+      viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+      className={size === "large" ? "h-[clamp(240px,38dvh,420px)] w-full" : "h-full min-h-28 w-full"}
       role="img"
       aria-label="Trend chart"
       onPointerMove={handlePointerMove}
@@ -1469,14 +1404,22 @@ function LineChart({
         </linearGradient>
       </defs>
       <polygon points={area} fill={`url(#${gradientId})`} />
-      <polyline points={path} fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      <polyline
+        points={path}
+        fill="none"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={lineWidth}
+        vectorEffect="non-scaling-stroke"
+      />
       {points.slice(-1).map((point) => (
-        <circle key={point.date} cx={point.x} cy={point.y} r="3" fill={color} />
+        <circle key={point.date} cx={point.x} cy={point.y} r={endpointRadius} fill={color} />
       ))}
       {activePoint ? (
         <g className="pointer-events-none">
-          <line x1={activePoint.x} x2={activePoint.x} y1="8" y2="120" stroke="rgba(0,0,0,0.18)" strokeDasharray="3 4" />
-          <circle cx={activePoint.x} cy={activePoint.y} r="4.5" fill="white" stroke={color} strokeWidth="2" />
+          <line x1={activePoint.x} x2={activePoint.x} y1="8" y2={chartHeight - 8} stroke="rgba(0,0,0,0.18)" strokeDasharray="3 4" />
+          <circle cx={activePoint.x} cy={activePoint.y} r={hoverRadius} fill="white" stroke={color} strokeWidth={hoverStrokeWidth} />
           <g transform={`translate(${tooltipX}, ${tooltipY})`}>
             <rect width={tooltipWidth} height={tooltipHeight} rx="9" fill="rgba(255,255,255,0.92)" stroke="rgba(0,0,0,0.12)" />
             <text x="10" y="17" className="fill-black/55 text-[10px] font-semibold uppercase">
@@ -1492,40 +1435,134 @@ function LineChart({
   );
 }
 
-function FunnelBars({ funnel }: { funnel: GrowthDashboardData["funnel"] }) {
-  const max = Math.max(...funnel.map((item) => item.count), 1);
-
-  if (!funnel.length) {
-    return (
-      <QuietState
-        icon={AlertTriangle}
-        title="Funnel unavailable"
-        detail="Growth events have not reached the backend for this period."
-        tone="warn"
-      />
-    );
-  }
+function FunnelSnapshot({
+  funnel,
+  onClick,
+}: {
+  funnel: GrowthDashboardData["funnel"];
+  onClick: () => void;
+}) {
+  const visible = funnel.slice(0, 5);
+  const max = Math.max(...visible.map((item) => item.count), 1);
 
   return (
-    <div className="grid gap-3">
-      {funnel.map((item, index) => (
-        <div key={item.key} className="grid gap-1.5">
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="truncate font-semibold text-black">{item.label}</span>
-            <span className="shrink-0 tabular-nums text-black/58">{formatNumber(item.count)}</span>
+    <button
+      type="button"
+      onClick={onClick}
+      className="grid h-full min-h-0 w-full grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-white/55 bg-white/42 p-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)]"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="truncate text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Conversion shape</p>
+        <Maximize2 aria-hidden="true" size={14} strokeWidth={1.9} className="text-black/34" />
+      </div>
+      <div className="grid min-h-0 content-center gap-3">
+        {visible.map((item, index) => (
+          <div key={item.key} className="grid gap-1.5">
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="truncate font-semibold text-black">{item.label}</span>
+              <span className="shrink-0 tabular-nums text-black/58">{formatNumber(item.count)}</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-black/[0.08]">
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${Math.max(item.count > 0 ? 3 : 0, (item.count / max) * 100)}%`,
+                  backgroundColor: chartColors[index % chartColors.length],
+                }}
+              />
+            </div>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-black/[0.08]">
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${Math.max(3, (item.count / max) * 100)}%`,
-                backgroundColor: chartColors[index % chartColors.length],
-              }}
-            />
-          </div>
+        ))}
+      </div>
+    </button>
+  );
+}
+
+function RetentionCurveCard({
+  onClick,
+  retention,
+}: {
+  onClick: () => void;
+  retention: GrowthDashboardData["summary"]["users"]["retention"];
+}) {
+  const latestRate = retention.d30?.rate ?? 0;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-white/55 bg-white/42 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)]"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="truncate text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Retention curve</p>
+          <span className="rounded-full bg-[#fff9e8] px-2 py-0.5 text-[11px] font-semibold text-[#9b710c]">Gold line</span>
         </div>
+        <p className="shrink-0 text-xl font-semibold tabular-nums text-black">{formatPercent(latestRate)}</p>
+      </div>
+      <RetentionCurveChart retention={retention} />
+    </button>
+  );
+}
+
+function RetentionCurveChart({
+  retention,
+}: {
+  retention: GrowthDashboardData["summary"]["users"]["retention"];
+}) {
+  const rows = [
+    { key: "d1" as const, label: "D1", rate: retention.d1?.rate ?? 0, target: retentionTargets.d1 },
+    { key: "d7" as const, label: "D7", rate: retention.d7?.rate ?? 0, target: retentionTargets.d7 },
+    { key: "d30" as const, label: "D30", rate: retention.d30?.rate ?? 0, target: retentionTargets.d30 },
+  ];
+  const max = Math.max(30, ...rows.map((row) => row.rate), ...rows.map((row) => row.target));
+  const width = 320;
+  const height = 128;
+  const points = rows.map((row, index) => ({
+    ...row,
+    x: 28 + index * 132,
+    y: height - 28 - (row.rate / max) * 78,
+    targetY: height - 28 - (row.target / max) * 78,
+  }));
+  const currentPath = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const targetPath = points.map((point) => `${point.x},${point.targetY}`).join(" ");
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-full min-h-52 w-full" role="img" aria-label="Retention curve">
+      <line x1="24" x2="296" y1="100" y2="100" stroke="rgba(0,0,0,0.10)" />
+      <polyline
+        points={targetPath}
+        fill="none"
+        stroke="#d29a13"
+        strokeDasharray="4 5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.4"
+        vectorEffect="non-scaling-stroke"
+      />
+      <polyline
+        points={currentPath}
+        fill="none"
+        stroke="#5068e7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.7"
+        vectorEffect="non-scaling-stroke"
+      />
+      {points.map((point) => (
+        <g key={point.key}>
+          <circle cx={point.x} cy={point.y} r="3" fill="#5068e7" />
+          <text x={point.x} y={point.y - 9} textAnchor="middle" className="fill-black text-[10px] font-semibold">
+            {formatPercent(point.rate)}
+          </text>
+          <text x={point.x} y="119" textAnchor="middle" className="fill-black/50 text-[10px] font-semibold uppercase">
+            {point.label}
+          </text>
+        </g>
       ))}
-    </div>
+      <text x="208" y="17" className="fill-[#9b710c] text-[10px] font-semibold uppercase">Gold standard</text>
+      <text x="208" y="31" className="fill-[#5068e7] text-[10px] font-semibold uppercase">Current</text>
+    </svg>
   );
 }
 
@@ -1593,37 +1630,6 @@ function RingMeter({ value }: { value: number }) {
         </text>
       </svg>
     </div>
-  );
-}
-
-function RetentionCard({
-  cohort,
-  label,
-  onClick,
-  rate,
-  retained,
-}: {
-  cohort: number;
-  label: string;
-  onClick?: () => void;
-  rate: number;
-  retained: number;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-lg border border-white/55 bg-white/42 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_50px_rgba(80,104,231,0.14)]"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-black">{label}</p>
-        <span className={["rounded-full px-2 py-1 text-xs font-semibold", rate >= 20 ? "bg-[#f3fbf1] text-[#176e0f]" : "bg-[#fff9e8] text-[#96690f]"].join(" ")}>
-          {formatPercent(rate)}
-        </span>
-      </div>
-      <p className="mt-3 text-2xl font-semibold tabular-nums text-black">{formatNumber(retained)}</p>
-      <p className="text-sm text-black/56">of {formatNumber(cohort)} users</p>
-    </button>
   );
 }
 
@@ -1864,18 +1870,6 @@ function HealthCheckRow({ check }: { check: GrowthHealthCheck }) {
   );
 }
 
-function TodoRow({ todo }: { todo: GrowthTodo }) {
-  return (
-    <div className="grid gap-1 border-b border-black/10 py-3 last:border-0">
-      <div className="flex items-center gap-2">
-        <span className={["size-2 rounded-full", severityDotClass(todo.severity)].join(" ")} />
-        <p className="text-sm font-semibold text-black">{todo.title}</p>
-      </div>
-      <p className="text-sm leading-5 text-black/60">{todo.action}</p>
-    </div>
-  );
-}
-
 function ContentRow({ onClick, row }: { onClick?: () => void; row: GrowthContentRow }) {
   const title = row.title ?? row.content ?? row.jounral_name ?? `Item ${row.id ?? ""}`;
   const detail = row.subtitle ?? row.sub_title ?? row.artist ?? row.status ?? row.type ?? row.duration ?? "Content row";
@@ -1993,7 +1987,7 @@ function DetailModal({ detail, onClose }: { detail: DetailView; onClose: () => v
             <p className="mb-4 whitespace-pre-wrap text-sm leading-6 text-black/68">{detail.description}</p>
           ) : null}
           {detail.chart ? (
-            <div className="mb-4 grid min-h-[48dvh] rounded-lg border border-white/60 bg-white/44 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]">
+            <div className="mb-4 grid rounded-lg border border-white/60 bg-white/44 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Focused graph</p>
                 <p className="text-2xl font-semibold tabular-nums text-black">{detail.chart.value}</p>
@@ -2437,6 +2431,17 @@ function trendSummaryRows(data: GrowthTrendPoint[]) {
   ];
 }
 
+function retentionCurveRows(retention: GrowthDashboardData["summary"]["users"]["retention"]) {
+  return (["d1", "d7", "d30"] as const).flatMap((key) => {
+    const cohort = retention[key];
+    return [
+      { label: `${key.toUpperCase()} rate`, value: formatPercent(cohort?.rate ?? 0) },
+      { label: `${key.toUpperCase()} gold`, value: formatPercent(retentionTargets[key]) },
+      { label: `${key.toUpperCase()} retained`, value: `${formatNumber(cohort?.retained ?? 0)} / ${formatNumber(cohort?.cohort ?? 0)}` },
+    ];
+  });
+}
+
 function chartDetail(title: string, value: string, data: GrowthTrendPoint[], color: string): DetailView {
   return {
     eyebrow: "Expanded chart",
@@ -2670,12 +2675,6 @@ function emailStatusColor(status: string) {
   if (normalized.includes("open") || normalized.includes("click")) return "#5068e7";
   if (normalized.includes("sent") || normalized.includes("deliver")) return "#209d13";
   return "#d29a13";
-}
-
-function severityDotClass(severity: string) {
-  if (severity === "high") return "bg-[#f45253]";
-  if (severity === "medium") return "bg-[#f9bc2c]";
-  return "bg-[#5068e7]";
 }
 
 function formatNumber(value: number) {

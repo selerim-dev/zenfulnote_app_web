@@ -2,6 +2,17 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import {
+  Eye,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Plus,
+  RefreshCw,
+  Save,
+  Trash2,
+} from "lucide-react";
 
 export type AdminBlogArticle = {
   slug: string;
@@ -35,6 +46,9 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
   const [draft, setDraft] = useState(() => formFromArticle(selected));
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [message, setMessage] = useState("");
+  const [articleListCollapsed, setArticleListCollapsed] = useState(false);
+  const [settingsCollapsed, setSettingsCollapsed] = useState(false);
+  const isCreating = selectedSlug === "__new__";
 
   const sortedArticles = useMemo(
     () =>
@@ -57,6 +71,15 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
     setMessage("");
   }
 
+  function createArticle() {
+    setSelectedSlug("__new__");
+    setDraft(formFromArticle(null));
+    setSaveState("idle");
+    setMessage("");
+    setArticleListCollapsed(true);
+    setSettingsCollapsed(false);
+  }
+
   function updateDraft<Key extends keyof ArticleForm>(
     key: Key,
     value: ArticleForm[Key],
@@ -67,12 +90,11 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
   }
 
   async function saveArticle() {
-    if (!selected) return;
     setSaveState("saving");
     setMessage("");
 
-    const response = await fetch(`/api/admin/articles/${selected.slug}`, {
-      method: "PATCH",
+    const response = await fetch(isCreating ? "/api/admin/articles" : `/api/admin/articles/${selected?.slug}`, {
+      method: isCreating ? "POST" : "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payloadFromForm(draft)),
     });
@@ -92,7 +114,9 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
     }
 
     setArticles((current) =>
-      current.map((item) => (item.slug === article.slug ? article : item)),
+      isCreating
+        ? [article, ...current.filter((item) => item.slug !== article.slug)]
+        : current.map((item) => (item.slug === article.slug ? article : item)),
     );
     setSelectedSlug(article.slug);
     setDraft(formFromArticle(article));
@@ -126,22 +150,79 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
   }
 
   return (
-    <div className="grid h-full min-h-0 overflow-hidden rounded-lg border border-white/55 bg-white/[0.42] shadow-[0_24px_80px_rgba(30,32,50,0.09),inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl lg:grid-cols-[360px_1fr]">
+    <div
+      className={[
+        "grid h-full min-h-0 overflow-hidden rounded-lg border border-white/55 bg-white/[0.42] shadow-[0_24px_80px_rgba(30,32,50,0.09),inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl",
+        articleListCollapsed ? "lg:grid-cols-[56px_1fr]" : "lg:grid-cols-[340px_1fr]",
+      ].join(" ")}
+    >
       <aside className="flex min-h-0 flex-col border-b border-white/55 bg-white/[0.26] backdrop-blur-xl lg:border-b-0 lg:border-r lg:border-white/55">
         <div className="flex items-center justify-between gap-3 border-b border-white/55 bg-white/[0.18] p-4">
-          <div>
-            <h2 className="text-sm font-semibold text-black">Runtime Articles</h2>
-            <p className="mt-1 text-xs text-muted">{articles.length} editable</p>
-          </div>
+          {articleListCollapsed ? null : (
+            <div>
+              <h2 className="text-sm font-semibold text-black">Runtime Articles</h2>
+              <p className="mt-1 text-xs text-muted">{articles.length} editable</p>
+            </div>
+          )}
+          <div className={["flex gap-2", articleListCollapsed ? "w-full flex-col items-center" : "items-center"].join(" ")}>
+          <button
+            type="button"
+            onClick={() => setArticleListCollapsed((current) => !current)}
+            aria-label={articleListCollapsed ? "Expand article list" : "Collapse article list"}
+            className="grid size-9 shrink-0 place-items-center rounded-full border border-white/65 bg-white/45 text-black transition duration-200 hover:-translate-y-0.5 hover:bg-white/72 hover:shadow-[0_14px_34px_rgba(80,104,231,0.12)]"
+          >
+            {articleListCollapsed ? <PanelLeftOpen aria-hidden="true" size={16} /> : <PanelLeftClose aria-hidden="true" size={16} />}
+          </button>
+          {articleListCollapsed ? null : (
+            <>
+              <button
+                type="button"
+                onClick={createArticle}
+                className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/65 bg-white/45 px-3 text-xs font-semibold text-black transition duration-200 hover:-translate-y-0.5 hover:bg-white/72 hover:shadow-[0_14px_34px_rgba(80,104,231,0.12)]"
+              >
+                <Plus aria-hidden="true" size={14} />
+                New
+              </button>
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="min-h-10 rounded-full border border-white/65 bg-white/45 px-3 text-xs font-semibold text-black transition duration-200 hover:-translate-y-0.5 hover:bg-white/72 hover:shadow-[0_14px_34px_rgba(80,104,231,0.12)]"
+                className="grid size-10 place-items-center rounded-full border border-white/65 bg-white/45 text-black transition duration-200 hover:-translate-y-0.5 hover:bg-white/72 hover:shadow-[0_14px_34px_rgba(80,104,231,0.12)]"
+                aria-label="Refresh articles"
           >
-            Refresh
+                <RefreshCw aria-hidden="true" size={14} />
           </button>
+            </>
+          )}
+          </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        <div className={["min-h-0 flex-1 overflow-y-auto", articleListCollapsed ? "p-2" : "p-3"].join(" ")}>
+          {articleListCollapsed ? (
+            <div className="grid gap-2">
+              <button
+                type="button"
+                onClick={createArticle}
+                aria-label="Create article"
+                className="grid size-10 place-items-center rounded-full border border-white/65 bg-white/45 text-black transition duration-200 hover:-translate-y-0.5 hover:bg-white/72 hover:shadow-[0_14px_34px_rgba(80,104,231,0.12)]"
+              >
+                <Plus aria-hidden="true" size={16} />
+              </button>
+              {sortedArticles.slice(0, 12).map((article) => (
+                <button
+                  key={article.slug}
+                  type="button"
+                  onClick={() => selectArticle(article)}
+                  title={article.title}
+                  className={[
+                    "grid size-10 place-items-center rounded-full border text-xs font-semibold uppercase transition duration-200",
+                    selectedSlug === article.slug ? "border-black bg-black text-white" : "border-white/60 bg-white/45 text-black hover:bg-white/72",
+                  ].join(" ")}
+                >
+                  {article.title.slice(0, 1)}
+                </button>
+              ))}
+            </div>
+          ) : (
+          <>
           {sortedArticles.length ? (
             <div className="grid gap-2">
               {sortedArticles.map((article) => (
@@ -179,50 +260,62 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
               No Looprail runtime articles are stored yet.
             </p>
           )}
+          </>
+          )}
         </div>
       </aside>
 
       <section className="min-h-0 min-w-0">
-        {selected ? (
+        {selected || isCreating ? (
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/55 bg-white/[0.18] p-4">
               <div className="min-w-0">
                 <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted">
-                  /blog/{selected.slug}
+                  {isCreating ? "New article" : `/blog/${selected?.slug}`}
                 </p>
                 <h1 className="mt-1 truncate text-xl font-semibold text-black">
-                  {selected.title}
+                  {draft.title || "Untitled draft"}
                 </h1>
               </div>
               <div className="flex flex-wrap gap-2">
-                {selected.published ? (
+                {selected?.published ? (
                   <Link
                     href={`/blog/${selected.slug}`}
                     target="_blank"
-                    className="inline-flex min-h-10 items-center rounded-full border border-white/65 bg-white/45 px-4 text-sm font-semibold text-black transition duration-200 hover:-translate-y-0.5 hover:bg-white/72 hover:shadow-[0_14px_34px_rgba(80,104,231,0.12)]"
+                    className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/65 bg-white/45 px-4 text-sm font-semibold text-black transition duration-200 hover:-translate-y-0.5 hover:bg-white/72 hover:shadow-[0_14px_34px_rgba(80,104,231,0.12)]"
                   >
+                    <Eye aria-hidden="true" size={15} />
                     View
                   </Link>
                 ) : null}
-                <button
+                {!isCreating ? (
+                  <button
                   type="button"
                   onClick={deleteArticle}
-                  className="min-h-10 rounded-full border border-[#f45253]/35 bg-white/38 px-4 text-sm font-semibold text-[#b42324] transition duration-200 hover:-translate-y-0.5 hover:bg-[#fff3f3] hover:shadow-[0_14px_34px_rgba(244,82,83,0.12)]"
+                    className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[#f45253]/35 bg-white/38 px-4 text-sm font-semibold text-[#b42324] transition duration-200 hover:-translate-y-0.5 hover:bg-[#fff3f3] hover:shadow-[0_14px_34px_rgba(244,82,83,0.12)]"
                 >
+                    <Trash2 aria-hidden="true" size={15} />
                   Delete
                 </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={saveArticle}
                   disabled={saveState === "saving"}
-                  className="min-h-10 rounded-full bg-black px-5 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#292929] hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:opacity-55"
+                  className="inline-flex min-h-10 items-center gap-2 rounded-full bg-black px-5 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#292929] hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:opacity-55"
                 >
-                  {saveState === "saving" ? "Saving" : "Save"}
+                  <Save aria-hidden="true" size={15} />
+                  {saveState === "saving" ? "Saving" : isCreating ? "Create" : "Save"}
                 </button>
               </div>
             </div>
 
-            <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto p-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div
+              className={[
+                "grid min-h-0 flex-1 gap-4 overflow-y-auto p-4",
+                settingsCollapsed ? "xl:grid-cols-[minmax(0,1fr)_56px]" : "xl:grid-cols-[minmax(0,1fr)_320px]",
+              ].join(" ")}
+            >
               <div className="grid content-start gap-4">
                 <Field label="Title">
                   <input
@@ -249,17 +342,28 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                     className="min-h-20 w-full rounded-lg border border-white/65 bg-white/50 p-3 text-sm leading-6 text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition focus:border-[#5068e7] focus:bg-white/78"
                   />
                 </Field>
-                <Field label="Markdown">
+                <Field label="Article body">
                   <textarea
                     value={draft.content}
                     onChange={(event) => updateDraft("content", event.target.value)}
                     spellCheck
-                    className="min-h-[34rem] w-full rounded-lg border border-white/65 bg-white/50 p-4 font-mono text-sm leading-6 text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition focus:border-[#5068e7] focus:bg-white/78"
+                    className="min-h-[36rem] w-full rounded-lg border border-white/65 bg-white/50 p-4 text-sm leading-7 text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition focus:border-[#5068e7] focus:bg-white/78"
+                    placeholder="Write normally. Blank lines become paragraphs; markdown syntax is preserved when used."
                   />
                 </Field>
               </div>
 
               <div className="grid content-start gap-4">
+                <button
+                  type="button"
+                  onClick={() => setSettingsCollapsed((current) => !current)}
+                  aria-label={settingsCollapsed ? "Expand article settings" : "Collapse article settings"}
+                  className="grid size-10 place-items-center rounded-full border border-white/65 bg-white/45 text-black transition duration-200 hover:-translate-y-0.5 hover:bg-white/72 hover:shadow-[0_14px_34px_rgba(80,104,231,0.12)]"
+                >
+                  {settingsCollapsed ? <PanelRightOpen aria-hidden="true" size={16} /> : <PanelRightClose aria-hidden="true" size={16} />}
+                </button>
+                {settingsCollapsed ? null : (
+                <>
                 <ToggleField
                   label="Published"
                   checked={draft.published}
@@ -330,6 +434,8 @@ export function BlogAdmin({ initialArticles }: BlogAdminProps) {
                     {message}
                   </div>
                 ) : null}
+                </>
+                )}
               </div>
             </div>
           </div>
@@ -394,11 +500,20 @@ function payloadFromForm(form: ArticleForm) {
     featuredImage: form.featuredImage,
     featuredImageAlt: form.featuredImageAlt,
     author: form.author,
-    content: form.content,
+    content: markdownFromEditorText(form.content),
     contentFormat: "markdown",
     published: form.published,
     promoted: form.promoted,
   };
+}
+
+function markdownFromEditorText(value: string) {
+  return value
+    .replace(/\r\n/g, "\n")
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function Field({
