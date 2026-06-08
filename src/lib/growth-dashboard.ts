@@ -153,6 +153,7 @@ export type GrowthContentRow = {
   audio_link?: string | null;
   cat_id?: string | number | null;
   cover_image?: string | null;
+  desc?: string | null;
   description?: string | null;
   duration?: string | number | null;
   file?: string | null;
@@ -168,7 +169,20 @@ export type GrowthContentRow = {
   activity_type?: string | null;
   activity_id?: number | string | null;
   partner_content?: boolean;
+  is_partner_content?: boolean | number | null;
+  partner_id?: string | number | null;
+  audio_category_id?: string | number | null;
+  search_string?: string | null;
+  spotify_url?: string | null;
+  author?: string | null;
+  audio_file?: string | null;
+  created_at?: string | null;
   updated_at?: string | null;
+  preview?: {
+    video_url?: string | null;
+    thumbnail_url?: string | null;
+    audio_url?: string | null;
+  };
 };
 
 type GrowthDashboardResult =
@@ -241,6 +255,52 @@ export async function runGrowthLifecycleDryRun() {
   }
 
   return { ok: true, data: body?.data };
+}
+
+export async function getGrowthContent(type: string, id: string) {
+  const key = growthDashboardKey();
+  if (!key) {
+    return { ok: false, error: `${GROWTH_DASHBOARD_KEY_ENV} is not configured.` };
+  }
+
+  const response = await fetch(growthEndpoint(`/api/internal/growth/content/${type}/${id}`), {
+    cache: "no-store",
+    headers: {
+      "X-Growth-Dashboard-Key": key,
+      Accept: "application/json",
+    },
+  });
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok || !body?.data) {
+    return { ok: false, error: body?.message ?? `Content request failed with ${response.status}.` };
+  }
+
+  return { ok: true, data: body.data as GrowthContentRow };
+}
+
+export async function updateGrowthContent(type: string, id: string, formData: FormData) {
+  const key = growthDashboardKey();
+  if (!key) {
+    return { ok: false, error: `${GROWTH_DASHBOARD_KEY_ENV} is not configured.` };
+  }
+
+  const response = await fetch(growthEndpoint(`/api/internal/growth/content/${type}/${id}`), {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "X-Growth-Dashboard-Key": key,
+      Accept: "application/json",
+    },
+    body: formData,
+  });
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok || !body?.data) {
+    return { ok: false, error: body?.message ?? `Content update failed with ${response.status}.` };
+  }
+
+  return { ok: true, data: body.data as GrowthContentRow };
 }
 
 function growthEndpoint(pathname: string) {

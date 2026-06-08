@@ -10,19 +10,25 @@ import {
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
+  ExternalLink,
+  Eye,
   FileText,
   Gauge,
   HeartPulse,
+  ImageIcon,
   LayoutDashboard,
   Mail,
   Music,
   PenLine,
+  PlayCircle,
   Quote,
   RefreshCw,
+  Save,
   Send,
   ShieldCheck,
   Sparkles,
   TrendingUp,
+  Upload,
   Users,
   X,
   Zap,
@@ -69,6 +75,15 @@ type DetailView = {
   title: string;
   description?: string | null;
   rows?: Array<{ label: string; value: string | number | boolean | null | undefined }>;
+};
+
+type ContentEditorState = {
+  type: ContentKey;
+  row: GrowthContentRow;
+  mode: "view" | "edit";
+  loading: boolean;
+  saving: boolean;
+  error?: string;
 };
 
 const pages: Array<{ key: AdminPageKey; label: string; icon: LucideIcon }> = [
@@ -245,7 +260,7 @@ export function AdminConsole({
             </div>
 
             <nav className="min-w-0 flex-1 overflow-x-auto">
-              <div className="flex w-max gap-1 rounded-full border border-white/55 bg-white/36 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl">
+              <div className="mx-auto flex w-max gap-1 rounded-full border border-white/55 bg-white/36 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl">
                 {pages.map((page) => (
                   <TabButton
                     key={page.key}
@@ -317,8 +332,11 @@ export function AdminConsole({
                 key={contentTab}
                 content={dashboard.content}
                 contentTab={contentTab}
-                onInspect={setDetailView}
                 onContentTabChange={setContentTab}
+                onContentSaved={() => {
+                  void refreshDashboard({ quiet: true });
+                }}
+                onNotice={setToast}
               />
             ) : null}
             {activePage === "blogs" ? <BlogsPage articles={articles} /> : null}
@@ -809,25 +827,83 @@ function LifecyclePage({
 function ContentPage({
   content,
   contentTab,
-  onInspect,
   onContentTabChange,
+  onContentSaved,
+  onNotice,
 }: {
   content?: GrowthContentInventory;
   contentTab: ContentKey;
-  onInspect: (detail: DetailView) => void;
   onContentTabChange: (key: ContentKey) => void;
+  onContentSaved: () => void;
+  onNotice: (toast: Toast) => void;
 }) {
   const [page, setPage] = useState(1);
+  const [editor, setEditor] = useState<ContentEditorState | null>(null);
   const counts = content?.counts ?? {};
   const recentRows = content?.recent?.[contentTab] ?? [];
-  const surface = content?.api_surfaces?.find((item) => item.key === contentTab);
   const pageSize = 10;
   const totalPages = Math.max(1, Math.ceil(recentRows.length / pageSize));
   const visibleRows = recentRows.slice((page - 1) * pageSize, page * pageSize);
 
+  async function openEditor(row: GrowthContentRow) {
+    if (!row.id) return;
+
+    const fallbackRow = { ...row };
+    setEditor({ type: contentTab, row: fallbackRow, mode: "view", loading: true, saving: false });
+
+    try {
+      const response = await fetch(`/api/admin/growth/content/${contentTab}/${row.id}`, {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok || !body?.ok || !body?.data) {
+        const message = body?.error ?? "Content detail could not be loaded.";
+        setEditor({ type: contentTab, row: fallbackRow, mode: "view", loading: false, saving: false, error: message });
+        return;
+      }
+
+      setEditor({ type: contentTab, row: body.data as GrowthContentRow, mode: "view", loading: false, saving: false });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Content detail could not be loaded.";
+      setEditor({ type: contentTab, row: fallbackRow, mode: "view", loading: false, saving: false, error: message });
+    }
+  }
+
+  async function saveEditor(formData: FormData) {
+    if (!editor?.row.id) return;
+
+    setEditor((current) => current ? { ...current, saving: true, error: undefined } : current);
+
+    try {
+      const response = await fetch(`/api/admin/growth/content/${editor.type}/${editor.row.id}`, {
+        method: "POST",
+        body: formData,
+      });
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok || !body?.ok || !body?.data) {
+        const message = body?.error ?? "Content update failed.";
+        setEditor((current) => current ? { ...current, saving: false, error: message } : current);
+        onNotice({ tone: "warning", message });
+        return;
+      }
+
+      setEditor({ type: editor.type, row: body.data as GrowthContentRow, mode: "view", loading: false, saving: false });
+      onNotice({ tone: "success", message: "Content updated." });
+      onContentSaved();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Content update failed.";
+      setEditor((current) => current ? { ...current, saving: false, error: message } : current);
+      onNotice({ tone: "danger", message });
+    }
+  }
+
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden">
-      <div className="flex gap-2 overflow-x-auto rounded-full border border-white/55 bg-white/30 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl">
+      <div className="flex justify-center overflow-x-auto rounded-full border border-white/55 bg-white/30 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-2xl">
+        <div className="flex w-max gap-1">
         {contentTabs.map((tab) => (
           <ContentTabButton
             key={tab.key}
@@ -838,9 +914,10 @@ function ContentPage({
             onClick={() => onContentTabChange(tab.key)}
           />
         ))}
+        </div>
       </div>
 
-      <div className="grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="min-h-0">
         <Panel title={titleCase(contentTab)} eyebrow="Recent content" icon={BookOpen}>
           <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
             <div className="min-h-0 overflow-y-auto rounded-lg border border-white/50 bg-white/36 backdrop-blur-xl">
@@ -848,7 +925,7 @@ function ContentPage({
                 <ContentRow
                   key={`${contentTab}-${row.id ?? index}`}
                   row={row}
-                  onClick={() => onInspect(contentDetail(contentTab, row))}
+                  onClick={() => void openEditor(row)}
                 />
               ))}
               {!visibleRows.length ? (
@@ -885,21 +962,15 @@ function ContentPage({
             </div>
           </div>
         </Panel>
-        <Panel title="API Surface" eyebrow="Backend route" icon={ShieldCheck}>
-          <div className="grid content-start gap-3">
-            <TinyStat label="Method" value={surface?.method ?? "Unknown"} />
-            <div className="rounded-lg border border-black/10 bg-white/70 p-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Path</p>
-              <p className="mt-2 break-all font-mono text-sm text-black">
-                {surface?.path ?? "Not mapped"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-[#dce4ff] bg-[#f4f6ff] p-3 text-sm leading-6 text-[#31449f]">
-              Create/edit actions need an admin-auth bridge before this web console can safely write through the old mobile API routes.
-            </div>
-          </div>
-        </Panel>
       </div>
+      {editor ? (
+        <ContentEditorModal
+          editor={editor}
+          onClose={() => setEditor(null)}
+          onEdit={() => setEditor((current) => current ? { ...current, mode: "edit" } : current)}
+          onSave={saveEditor}
+        />
+      ) : null}
     </div>
   );
 }
@@ -931,19 +1002,17 @@ function ContentTabButton({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={[
-        "grid min-h-14 w-44 shrink-0 gap-1 rounded-full border px-4 py-2 text-left transition duration-200 md:w-auto",
+        "inline-flex min-h-9 shrink-0 items-center gap-2 rounded-full border px-3 py-1 text-left transition duration-200",
         active
-          ? "border-white/85 bg-white/72 shadow-[0_18px_55px_rgba(80,104,231,0.18),inset_0_1px_0_rgba(255,255,255,0.95)]"
-          : "border-white/45 bg-white/24 hover:-translate-y-0.5 hover:border-white/75 hover:bg-white/56 hover:shadow-[0_14px_40px_rgba(80,104,231,0.12)]",
+          ? "border-white/85 bg-white/76 shadow-[0_14px_38px_rgba(80,104,231,0.16),inset_0_1px_0_rgba(255,255,255,0.95)]"
+          : "border-white/45 bg-white/24 hover:-translate-y-0.5 hover:border-white/75 hover:bg-white/56 hover:shadow-[0_12px_28px_rgba(80,104,231,0.12)]",
       ].join(" ")}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-black/52">
-          {label}
-        </span>
-        <Icon aria-hidden="true" size={16} strokeWidth={1.9} className="text-[#5068e7]" />
-      </div>
-      <span className="text-2xl font-semibold tabular-nums text-black">{formatNumber(count)}</span>
+      <Icon aria-hidden="true" size={14} strokeWidth={1.9} className="text-[#5068e7]" />
+      <span className="text-xs font-semibold uppercase tracking-[0.1em] text-black/58">{label}</span>
+      <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-xs font-semibold tabular-nums text-black">
+        {formatNumber(count)}
+      </span>
     </button>
   );
 }
@@ -1547,8 +1616,16 @@ function ToastNotice({ onClose, toast }: { onClose: () => void; toast: Toast }) 
 
 function DetailModal({ detail, onClose }: { detail: DetailView; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/24 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <section className="max-h-[82dvh] w-full max-w-2xl overflow-hidden rounded-lg border border-white/65 bg-white/68 shadow-[0_34px_120px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl">
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/24 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <section
+        className="max-h-[82dvh] w-full max-w-2xl overflow-hidden rounded-lg border border-white/65 bg-white/68 shadow-[0_34px_120px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="flex items-start justify-between gap-4 border-b border-white/60 bg-white/28 px-5 py-4">
           <div className="min-w-0">
             {detail.eyebrow ? (
@@ -1582,6 +1659,261 @@ function DetailModal({ detail, onClose }: { detail: DetailView; onClose: () => v
         </div>
       </section>
     </div>
+  );
+}
+
+function ContentEditorModal({
+  editor,
+  onClose,
+  onEdit,
+  onSave,
+}: {
+  editor: ContentEditorState;
+  onClose: () => void;
+  onEdit: () => void;
+  onSave: (formData: FormData) => Promise<void>;
+}) {
+  const title = contentTitle(editor.type, editor.row);
+  const rows = contentRows(editor.type, editor.row);
+
+  async function submitForm(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    form.querySelectorAll<HTMLInputElement>("input[type='checkbox'][name]").forEach((input) => {
+      formData.set(input.name, input.checked ? "1" : "0");
+    });
+
+    await onSave(formData);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/28 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <section
+        className="grid max-h-[88dvh] w-full max-w-5xl grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-white/65 bg-white/70 shadow-[0_34px_120px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-white/60 bg-white/30 px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-black/50">
+              {titleCase(editor.type)}
+            </p>
+            <h2 className="mt-1 truncate text-2xl font-semibold tracking-tight text-black">{title}</h2>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {editor.mode === "view" ? (
+              <button
+                type="button"
+                onClick={onEdit}
+                disabled={editor.loading}
+                className="inline-flex min-h-9 items-center gap-2 rounded-full border border-white/65 bg-white/50 px-3 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(80,104,231,0.14)] disabled:opacity-45"
+              >
+                <PenLine aria-hidden="true" size={15} strokeWidth={1.9} />
+                Edit
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close detail"
+              className="grid size-9 place-items-center rounded-full border border-white/65 bg-white/50 text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(0,0,0,0.16)]"
+            >
+              <X aria-hidden="true" size={16} strokeWidth={2} />
+            </button>
+          </div>
+        </div>
+        <div className="min-h-0 overflow-y-auto p-4">
+          {editor.error ? (
+            <div className="mb-3 rounded-lg border border-[#f3df9c] bg-[#fff9e8] p-3 text-sm font-semibold text-[#96690f]">
+              {editor.error}
+            </div>
+          ) : null}
+          {editor.loading ? (
+            <div className="grid min-h-64 place-items-center rounded-lg border border-white/55 bg-white/38">
+              <RefreshCw aria-hidden="true" className="animate-spin text-[#5068e7]" size={22} />
+            </div>
+          ) : editor.mode === "edit" ? (
+            <form onSubmit={submitForm} className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+              <MediaPreview row={editor.row} />
+              <div className="grid content-start gap-3">
+                <ContentEditFields row={editor.row} type={editor.type} />
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="min-h-10 rounded-full border border-white/65 bg-white/42 px-4 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_12px_32px_rgba(0,0,0,0.12)]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editor.saving}
+                    className="inline-flex min-h-10 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {editor.saving ? <RefreshCw aria-hidden="true" className="animate-spin" size={15} /> : <Save aria-hidden="true" size={15} />}
+                    Save
+                  </button>
+                </div>
+              </div>
+            </form>
+          ) : (
+            <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+              <MediaPreview row={editor.row} />
+              <div className="grid content-start gap-2">
+                {rows.map((row) => (
+                  <div key={`${row.label}-${String(row.value)}`} className="grid gap-1 rounded-lg border border-white/55 bg-white/42 p-3 sm:grid-cols-[160px_minmax(0,1fr)]">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{row.label}</p>
+                    <p className="min-w-0 break-words text-sm font-semibold text-black">{formatDetailValue(row.value)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function MediaPreview({ row }: { row: GrowthContentRow }) {
+  const preview = row.preview ?? {};
+  const rawVideo = row.video;
+  const rawThumbnail = row.thumbnail ?? row.cover_image;
+  const rawAudio = row.audio_link ?? row.audio_file ?? row.file;
+
+  if (!preview.video_url && !preview.thumbnail_url && !preview.audio_url && !rawVideo && !rawThumbnail && !rawAudio) {
+    return (
+      <div className="grid min-h-64 place-items-center rounded-lg border border-white/55 bg-white/34 p-5 text-center">
+        <div>
+          <Eye aria-hidden="true" className="mx-auto text-black/38" size={26} />
+          <p className="mt-3 text-sm font-semibold text-black/58">No media preview</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid content-start gap-3 rounded-lg border border-white/55 bg-white/34 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+      {preview.video_url ? (
+        <div className="overflow-hidden rounded-lg border border-black/10 bg-black">
+          <video src={preview.video_url} controls preload="metadata" className="aspect-video w-full bg-black object-contain" />
+        </div>
+      ) : null}
+      {preview.thumbnail_url ? (
+        <div className="overflow-hidden rounded-lg border border-black/10 bg-white">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={preview.thumbnail_url} alt="" className="max-h-72 w-full object-contain" />
+        </div>
+      ) : null}
+      {preview.audio_url ? (
+        <div className="rounded-lg border border-black/10 bg-white/58 p-3">
+          <audio src={preview.audio_url} controls className="w-full" />
+        </div>
+      ) : null}
+      <div className="grid gap-2">
+        {preview.video_url ? <MediaLink icon={PlayCircle} label="Video" url={preview.video_url} /> : null}
+        {preview.thumbnail_url ? <MediaLink icon={ImageIcon} label="Thumbnail" url={preview.thumbnail_url} /> : null}
+        {preview.audio_url ? <MediaLink icon={Music} label="Audio" url={preview.audio_url} /> : null}
+      </div>
+    </div>
+  );
+}
+
+function MediaLink({ icon: Icon, label, url }: { icon: LucideIcon; label: string; url: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex min-h-9 items-center justify-between gap-3 rounded-full border border-white/60 bg-white/45 px-3 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(80,104,231,0.14)]"
+    >
+      <span className="inline-flex min-w-0 items-center gap-2">
+        <Icon aria-hidden="true" size={15} className="shrink-0 text-[#5068e7]" />
+        <span>{label}</span>
+      </span>
+      <ExternalLink aria-hidden="true" size={14} className="shrink-0 text-black/48" />
+    </a>
+  );
+}
+
+function ContentEditFields({ row, type }: { row: GrowthContentRow; type: ContentKey }) {
+  return (
+    <div className="grid gap-3">
+      <ReadonlyField label="ID" value={row.id ?? "n/a"} />
+      {contentEditFields(type, row).map((field) => (
+        <EditField key={field.name} field={field} />
+      ))}
+      {contentUploadFields(type).map((field) => (
+        <label key={field.name} className="grid gap-1.5">
+          <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-black/48">
+            <Upload aria-hidden="true" size={13} />
+            {field.label}
+          </span>
+          <input
+            name={field.name}
+            type="file"
+            accept={field.accept}
+            className="min-h-10 rounded-lg border border-white/65 bg-white/50 px-3 py-2 text-sm text-black file:mr-3 file:rounded-full file:border-0 file:bg-black file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white"
+          />
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function ReadonlyField({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="grid gap-1.5">
+      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{label}</span>
+      <div className="min-h-10 rounded-lg border border-white/55 bg-black/[0.04] px-3 py-2 text-sm font-semibold text-black/58">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+type EditFieldConfig = {
+  name: string;
+  label: string;
+  type?: "text" | "textarea" | "number" | "checkbox";
+  value?: string | number | boolean | null;
+};
+
+function EditField({ field }: { field: EditFieldConfig }) {
+  if (field.type === "checkbox") {
+    return (
+      <label className="flex min-h-10 items-center justify-between gap-3 rounded-lg border border-white/55 bg-white/42 px-3 py-2">
+        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{field.label}</span>
+        <input name={field.name} type="checkbox" defaultChecked={Boolean(field.value)} className="size-4 accent-black" />
+      </label>
+    );
+  }
+
+  return (
+    <label className="grid gap-1.5">
+      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{field.label}</span>
+      {field.type === "textarea" ? (
+        <textarea
+          name={field.name}
+          defaultValue={field.value === null || field.value === undefined ? "" : String(field.value)}
+          rows={4}
+          className="min-h-28 resize-y rounded-lg border border-white/65 bg-white/50 px-3 py-2 text-sm text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition focus:border-[#5068e7] focus:bg-white/78"
+        />
+      ) : (
+        <input
+          name={field.name}
+          type={field.type ?? "text"}
+          defaultValue={field.value === null || field.value === undefined ? "" : String(field.value)}
+          className="min-h-10 rounded-lg border border-white/65 bg-white/50 px-3 text-sm text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition focus:border-[#5068e7] focus:bg-white/78"
+        />
+      )}
+    </label>
   );
 }
 
@@ -1636,31 +1968,122 @@ function retentionDetail(label: string, cohort?: { cohort: number; retained: num
   };
 }
 
-function contentDetail(contentType: ContentKey, row: GrowthContentRow): DetailView {
+function contentTitle(contentType: ContentKey, row: GrowthContentRow) {
+  return String(row.title ?? row.content ?? row.jounral_name ?? `${titleCase(contentType)} item`);
+}
+
+function contentRows(contentType: ContentKey, row: GrowthContentRow) {
   const title = row.title ?? row.content ?? row.jounral_name ?? `${titleCase(contentType)} item`;
-  const rows = [
+  return [
     { label: "ID", value: row.id },
     { label: "Status", value: row.status },
     { label: "Subtitle", value: row.subtitle ?? row.sub_title },
+    { label: "Title", value: title },
+    { label: "Description", value: row.description ?? row.desc },
     { label: "Artist", value: row.artist },
+    { label: "Author", value: row.author },
     { label: "Duration", value: row.duration ?? row.time },
     { label: "Activity ID", value: row.activity_id },
     { label: "Activity Type", value: row.activity_type },
     { label: "Category", value: row.cat_id },
+    { label: "Audio Category", value: row.audio_category_id },
     { label: "User ID", value: row.user_id },
     { label: "Trending", value: row.is_trending },
+    { label: "Partner Content", value: row.partner_content ?? row.is_partner_content },
+    { label: "Partner ID", value: row.partner_id },
     { label: "Video", value: row.video },
+    { label: "Thumbnail", value: row.thumbnail ?? row.cover_image },
     { label: "Audio", value: row.audio_link },
+    { label: "Audio File", value: row.audio_file },
+    { label: "File", value: row.file },
     { label: "Share link", value: row.share_link },
+    { label: "Spotify URL", value: row.spotify_url },
+    { label: "Created", value: row.created_at ? formatDateTime(row.created_at) : null },
     { label: "Updated", value: row.updated_at ? formatDateTime(row.updated_at) : null },
   ].filter((item) => item.value !== null && item.value !== undefined && item.value !== "");
+}
 
-  return {
-    eyebrow: titleCase(contentType),
-    title: String(title),
-    description: row.description ?? row.content ?? null,
-    rows,
-  };
+function contentEditFields(type: ContentKey, row: GrowthContentRow): EditFieldConfig[] {
+  if (type === "meditations" || type === "exercises") {
+    return [
+      { name: "title", label: "Title", value: row.title },
+      { name: "sub_title", label: "Subtitle", value: row.sub_title ?? row.subtitle },
+      { name: "desc", label: "Description", type: "textarea", value: row.desc ?? row.description },
+      { name: "time", label: "Time", value: row.time },
+      { name: "duration", label: "Duration", value: row.duration },
+      { name: "artist", label: "Artist", value: row.artist },
+      { name: "video", label: "Video URL or S3 path", value: row.video },
+      { name: "thumbnail", label: "Thumbnail URL or S3 path", value: row.thumbnail },
+      { name: "share_link", label: "Share link", value: row.share_link },
+      { name: "activity_type", label: "Activity type", type: "number", value: row.activity_type },
+      { name: "activity_id", label: "Activity ID", type: "number", value: row.activity_id },
+      { name: "status", label: "Status", value: row.status },
+      { name: "is_partner_content", label: "Partner content", type: "checkbox", value: row.partner_content ?? row.is_partner_content },
+      { name: "partner_id", label: "Partner ID", type: "number", value: row.partner_id },
+    ];
+  }
+
+  if (type === "audio") {
+    return [
+      { name: "title", label: "Title", value: row.title },
+      { name: "artist", label: "Artist", value: row.artist },
+      { name: "duration", label: "Duration", value: row.duration },
+      { name: "audio_link", label: "Audio URL or S3 path", value: row.audio_link },
+      { name: "cover_image", label: "Cover image URL or S3 path", value: row.cover_image },
+      { name: "share_link", label: "Share link", value: row.share_link },
+      { name: "spotify_url", label: "Spotify URL", value: row.spotify_url },
+      { name: "audio_category_id", label: "Audio category ID", type: "number", value: row.audio_category_id },
+      { name: "status", label: "Status", value: row.status },
+      { name: "is_trending", label: "Trending", type: "checkbox", value: row.is_trending },
+      { name: "is_partner_content", label: "Partner content", type: "checkbox", value: row.partner_content ?? row.is_partner_content },
+      { name: "partner_id", label: "Partner ID", type: "number", value: row.partner_id },
+    ];
+  }
+
+  if (type === "quotes") {
+    return [
+      { name: "content", label: "Content", type: "textarea", value: row.content },
+      { name: "author", label: "Author", value: row.author },
+      { name: "audio_file", label: "Audio URL or S3 path", value: row.audio_file },
+    ];
+  }
+
+  if (type === "affirmations") {
+    return [
+      { name: "content", label: "Content", type: "textarea", value: row.content },
+      { name: "audio_file", label: "Audio URL or S3 path", value: row.audio_file },
+    ];
+  }
+
+  return [
+    { name: "jounral_name", label: "Journal name", value: row.jounral_name },
+    { name: "cat_id", label: "Category ID", type: "number", value: row.cat_id },
+    { name: "file", label: "Recording file", value: row.file },
+    { name: "type", label: "Type", value: row.type },
+    { name: "user_id", label: "User ID", type: "number", value: row.user_id },
+  ];
+}
+
+function contentUploadFields(type: ContentKey) {
+  if (type === "meditations" || type === "exercises") {
+    return [
+      { name: "video_file", label: "Replace video", accept: "video/*" },
+      { name: "thumbnail_file", label: "Replace thumbnail", accept: "image/*" },
+    ];
+  }
+
+  if (type === "audio") {
+    return [
+      { name: "audio_file", label: "Replace audio", accept: "audio/*" },
+      { name: "cover_image_file", label: "Replace cover", accept: "image/*" },
+    ];
+  }
+
+  if (type === "quotes" || type === "affirmations") {
+    return [{ name: "audio_file_upload", label: "Replace audio", accept: "audio/*" }];
+  }
+
+  return [{ name: "recording_file", label: "Replace recording", accept: "audio/*" }];
 }
 
 function formatDetailValue(value: string | number | boolean | null | undefined) {
