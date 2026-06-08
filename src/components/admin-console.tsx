@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
+  Database as DatabaseIcon,
   ExternalLink,
   Eye,
   FileText,
@@ -572,7 +573,7 @@ function OverviewPage({
       <div className="min-h-0 overflow-hidden">
       <Panel title="App Pulse" eyebrow={`${dashboard.period.days} day window`} icon={TrendingUp}>
         <div className="grid h-full min-h-0 gap-2.5 overflow-y-auto pr-1">
-          <div className="grid min-h-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid min-h-0 gap-3 md:grid-cols-3">
             <ChartBlock
               title="Daily active users"
               value={formatNumber(users.active_7d)}
@@ -593,14 +594,6 @@ function OverviewPage({
               data={eventTrend}
               color="#ea6fcf"
               onClick={() => onInspect(chartDetail("First-party growth events", formatNumber(dashboard.events.total), eventTrend, "#ea6fcf"))}
-            />
-            <FunnelSnapshot
-              funnel={dashboard.funnel}
-              onClick={() => onInspect({
-                eyebrow: "Current funnel",
-                title: "Conversion Shape",
-                rows: dashboard.funnel.map((item) => ({ label: item.label, value: item.count })),
-              })}
             />
           </div>
         </div>
@@ -627,7 +620,7 @@ function RetentionPage({
             retention={retention}
             onClick={() => onInspect({
               eyebrow: "Retention curve",
-              title: "Current vs Gold Standard",
+              title: "Current vs Target",
               rows: retentionCurveRows(retention),
             })}
           />
@@ -638,7 +631,7 @@ function RetentionPage({
         </div>
       </Panel>
       <div className="grid min-h-0 gap-3 xl:grid-rows-[minmax(0,0.62fr)_minmax(0,0.38fr)]">
-        <Panel title="Activation Mix" eyebrow="Behavior loops" icon={Activity}>
+        <Panel title="Activation Mix" eyebrow="Core behaviors" icon={Activity}>
           <BarSet
             items={[
               { label: "Check-ins", value: dashboard.summary.activation.check_ins ?? 0, color: "#5068e7" },
@@ -659,7 +652,7 @@ function RetentionPage({
                   title={`${key.toUpperCase()} cohort`}
                   detail={`${formatNumber(cohort?.retained ?? 0)} retained from ${formatNumber(cohort?.cohort ?? 0)} users`}
                   value={formatPercent(cohort?.rate ?? 0)}
-                  tone={(cohort?.rate ?? 0) >= retentionTargets[key] ? "good" : "warn"}
+                  tone="neutral"
                   onClick={() => onInspect(retentionDetail(key.toUpperCase(), cohort))}
                 />
               );
@@ -818,9 +811,9 @@ function OutreachPage({
   outreachView: OutreachViewKey;
   readiness: GrowthReadiness;
 }) {
-  const loopsReady = readiness.integrations.loops_api_key && readiness.integrations.loops_webhook_secret;
   const sendgridReady = readiness.integrations.sendgrid_api_key;
-  const readinessStatus = sendgridReady ? "Ready" : "Needs setup";
+  const automationReady = readiness.integrations.growth_automation_enabled;
+  const readinessStatus = sendgridReady && automationReady ? "Ready" : "Needs setup";
   const summary = outreach?.summary;
   const performance = outreach?.performance;
 
@@ -836,13 +829,13 @@ function OutreachPage({
             icon={ShieldCheck}
             label="Delivery"
             value={readinessStatus}
-            detail={`SendGrid ${sendgridReady ? "ready" : "missing"} / Loops ${loopsReady ? "ready" : "optional"}`}
+            detail={`SendGrid ${sendgridReady ? "ready" : "missing"} / scheduler ${automationReady ? "on" : "off"}`}
             onClick={() => onInspect({
               eyebrow: "Outreach readiness",
               title: readinessStatus,
               rows: [
                 { label: "SendGrid", value: sendgridReady ? "Ready" : "Missing API key" },
-                { label: "Loops", value: loopsReady ? "Ready" : "Optional / not fully configured" },
+                { label: "Automation scheduler", value: automationReady ? "Enabled" : "Disabled" },
                 { label: "Email failure rate", value: `${performance?.email_failure_rate ?? dashboard.emails.failure_rate}%` },
               ],
             })}
@@ -941,6 +934,9 @@ function OutreachPerformanceView({
             <TinyStat label="Click rate" value={`${performance?.email_click_rate ?? 0}%`} />
             <TinyStat label="Push records" value={formatNumber(performance?.push_total ?? dashboard.notifications.total)} />
           </div>
+          <p className="rounded-lg border border-white/55 bg-white/34 px-3 py-2 text-xs font-medium text-black/56">
+            Email metrics read from <span className="font-semibold text-black/72">growth_email_messages</span>; push metrics read from <span className="font-semibold text-black/72">notification_logs</span>.
+          </p>
           <ScrollStack>
             <EmailStatusBars
               emails={dashboard.emails.by_type}
@@ -986,9 +982,15 @@ function OutreachTemplatesView({
   outreach: GrowthOutreachData | null;
 }) {
   const [form, setForm] = useState<OutreachTemplateForm>(emptyTemplateForm());
+  const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const templates = outreach?.templates ?? [];
+
+  function openTemplateEditor(template?: GrowthOutreachTemplate) {
+    setForm(template ? templateFormFromTemplate(template) : emptyTemplateForm());
+    setEditorOpen(true);
+  }
 
   async function submitTemplate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -996,6 +998,7 @@ function OutreachTemplatesView({
     try {
       await onSaveTemplate(templatePayloadFromForm(form), form.id);
       setForm(emptyTemplateForm());
+      setEditorOpen(false);
     } catch (error) {
       onNotice({ tone: "danger", message: error instanceof Error ? error.message : "Template save failed." });
     } finally {
@@ -1039,74 +1042,135 @@ function OutreachTemplatesView({
   }
 
   return (
-    <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(420px,0.86fr)_minmax(0,1.14fr)] xl:overflow-hidden">
-      <Panel title={form.id ? "Edit Template" : "Create Template"} eyebrow="Email or push copy" icon={FileText}>
-        <form onSubmit={submitTemplate} className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
+    <div className="h-full min-h-0 overflow-hidden">
+      <Panel title="Template Library" eyebrow={`${formatNumber(templates.length)} saved`} icon={ClipboardList}>
+        <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/55 bg-white/34 px-3 py-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">
+              Click a template to edit it. Active templates can be used by scheduled drips.
+            </p>
+            <button
+              type="button"
+              onClick={() => openTemplateEditor()}
+              className="inline-flex min-h-9 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)]"
+            >
+              <FileText aria-hidden="true" size={15} strokeWidth={1.9} />
+              Create template
+            </button>
+          </div>
+          <ScrollStack>
+            {templates.map((template) => (
+              <SignalRow
+                key={template.id}
+                title={template.name}
+                detail={`${labelize(template.channel)} / ${labelize(template.status)}${template.category ? ` / ${template.category}` : ""}`}
+                value={template.updated_at ? formatDateTime(template.updated_at) : `#${template.id}`}
+                onClick={() => openTemplateEditor(template)}
+              />
+            ))}
+            {!templates.length ? (
+              <QuietState icon={AlertTriangle} title="No templates yet" detail="Create the first email or push template from the editor." tone="warn" />
+            ) : null}
+          </ScrollStack>
+        </div>
+      </Panel>
+      {editorOpen ? (
+        <OutreachTemplateModal
+          drafting={drafting}
+          form={form}
+          onClose={() => setEditorOpen(false)}
+          onDraft={draftTemplate}
+          onFormChange={setForm}
+          onSubmit={submitTemplate}
+          saving={saving}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function OutreachTemplateModal({
+  drafting,
+  form,
+  onClose,
+  onDraft,
+  onFormChange,
+  onSubmit,
+  saving,
+}: {
+  drafting: boolean;
+  form: OutreachTemplateForm;
+  onClose: () => void;
+  onDraft: () => void;
+  onFormChange: React.Dispatch<React.SetStateAction<OutreachTemplateForm>>;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  saving: boolean;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/24 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <section
+        className="grid max-h-[90dvh] w-full max-w-4xl grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-white/65 bg-white/76 shadow-[0_34px_120px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-4 border-b border-white/60 bg-white/28 px-5 py-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-black/50">Email or push copy</p>
+            <h2 className="mt-0.5 truncate text-2xl font-semibold tracking-tight text-black">{form.id ? "Edit template" : "Create template"}</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close template editor" className="grid size-9 shrink-0 place-items-center rounded-full border border-white/65 bg-white/50 text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(0,0,0,0.16)]">
+            <X aria-hidden="true" size={16} strokeWidth={2} />
+          </button>
+        </div>
+        <form onSubmit={onSubmit} className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3 p-4">
           <div className="grid min-h-0 gap-3 overflow-y-auto pr-1">
             <div className="grid gap-2 sm:grid-cols-2">
-              <OutreachInput label="Name" value={form.name} onChange={(value) => setForm((current) => ({ ...current, name: value }))} />
+              <OutreachInput label="Name" value={form.name} onChange={(value) => onFormChange((current) => ({ ...current, name: value }))} />
               <OutreachSelect
                 label="Channel"
                 value={form.channel}
-                onChange={(value) => setForm((current) => ({ ...current, channel: value as "email" | "push" }))}
+                onChange={(value) => onFormChange((current) => ({ ...current, channel: value as "email" | "push" }))}
                 options={[["email", "Email"], ["push", "Push notification"]]}
               />
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
-              <OutreachInput label="Category" value={form.category} onChange={(value) => setForm((current) => ({ ...current, category: value }))} placeholder="onboarding, streak, trial" />
+              <OutreachInput label="Category" value={form.category} onChange={(value) => onFormChange((current) => ({ ...current, category: value }))} placeholder="onboarding, streak, trial" />
               <OutreachSelect
                 label="Status"
                 value={form.status}
-                onChange={(value) => setForm((current) => ({ ...current, status: value as OutreachTemplateForm["status"] }))}
+                onChange={(value) => onFormChange((current) => ({ ...current, status: value as OutreachTemplateForm["status"] }))}
                 options={[["draft", "Draft"], ["active", "Active"], ["archived", "Archived"]]}
               />
             </div>
-            <OutreachInput label={form.channel === "push" ? "Push title" : "Subject"} value={form.subject} onChange={(value) => setForm((current) => ({ ...current, subject: value }))} />
-            <OutreachInput label="Preview text" value={form.preview_text} onChange={(value) => setForm((current) => ({ ...current, preview_text: value }))} />
+            <OutreachInput label={form.channel === "push" ? "Push title" : "Subject"} value={form.subject} onChange={(value) => onFormChange((current) => ({ ...current, subject: value }))} />
+            <OutreachInput label="Preview text" value={form.preview_text} onChange={(value) => onFormChange((current) => ({ ...current, preview_text: value }))} />
             <label className="grid gap-1.5">
               <span className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Body</span>
               <textarea
                 aria-label="Body"
                 value={form.body}
-                onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))}
+                onChange={(event) => onFormChange((current) => ({ ...current, body: event.target.value }))}
                 placeholder="Write the editable outreach body here. Use {{first_name}} and {{deep_link}} variables."
                 className="min-h-56 resize-none rounded-lg border border-white/65 bg-white/46 px-3 py-2.5 text-sm leading-6 text-black outline-none transition placeholder:text-black/34 focus:border-[#5068e7] focus:bg-white/68"
               />
             </label>
           </div>
-          <div className="flex flex-wrap justify-between gap-2 border-t border-white/55 pt-3">
-            <button type="button" onClick={() => setForm(emptyTemplateForm())} className="min-h-10 rounded-full border border-white/65 bg-white/42 px-4 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_12px_32px_rgba(0,0,0,0.12)]">
-              New
+          <div className="flex justify-end gap-2 border-t border-white/55 pt-3">
+            <button type="button" onClick={onDraft} disabled={drafting} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/65 bg-white/50 px-4 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(80,104,231,0.14)] disabled:cursor-wait disabled:opacity-60">
+              <Sparkles aria-hidden="true" size={15} strokeWidth={1.9} />
+              {drafting ? "Drafting" : "Draft"}
             </button>
-            <div className="flex gap-2">
-              <button type="button" onClick={draftTemplate} disabled={drafting} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/65 bg-white/50 px-4 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(80,104,231,0.14)] disabled:cursor-wait disabled:opacity-60">
-                <Sparkles aria-hidden="true" size={15} strokeWidth={1.9} />
-                {drafting ? "Drafting" : "Draft"}
-              </button>
-              <button type="submit" disabled={saving || !form.name.trim()} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:cursor-not-allowed disabled:opacity-55">
-                <Save aria-hidden="true" size={15} strokeWidth={1.9} />
-                {saving ? "Saving" : "Save"}
-              </button>
-            </div>
+            <button type="submit" disabled={saving || !form.name.trim()} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:cursor-not-allowed disabled:opacity-55">
+              <Save aria-hidden="true" size={15} strokeWidth={1.9} />
+              {saving ? "Saving" : "Save"}
+            </button>
           </div>
         </form>
-      </Panel>
-      <Panel title="Template Library" eyebrow={`${formatNumber(templates.length)} saved`} icon={ClipboardList}>
-        <ScrollStack>
-          {templates.map((template) => (
-            <SignalRow
-              key={template.id}
-              title={template.name}
-              detail={`${labelize(template.channel)} / ${labelize(template.status)}${template.category ? ` / ${template.category}` : ""}`}
-              value={template.updated_at ? formatDateTime(template.updated_at) : `#${template.id}`}
-              onClick={() => setForm(templateFormFromTemplate(template))}
-            />
-          ))}
-          {!templates.length ? (
-            <QuietState icon={AlertTriangle} title="No templates yet" detail="Create the first email or push template from the editor." tone="warn" />
-          ) : null}
-        </ScrollStack>
-      </Panel>
+      </section>
     </div>
   );
 }
@@ -1121,10 +1185,16 @@ function OutreachDripsView({
   outreach: GrowthOutreachData | null;
 }) {
   const [form, setForm] = useState<OutreachDripForm>(emptyDripForm());
+  const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const drips = outreach?.drips ?? [];
   const templates = outreach?.templates ?? [];
   const audiences = outreach?.audiences ?? [];
+
+  function openDripEditor(drip?: GrowthOutreachDrip) {
+    setForm(drip ? dripFormFromDrip(drip) : emptyDripForm());
+    setEditorOpen(true);
+  }
 
   async function submitDrip(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1132,6 +1202,7 @@ function OutreachDripsView({
     try {
       await onSaveDrip(dripPayloadFromForm(form), form.id);
       setForm(emptyDripForm());
+      setEditorOpen(false);
     } catch (error) {
       onNotice({ tone: "danger", message: error instanceof Error ? error.message : "Drip save failed." });
     } finally {
@@ -1140,42 +1211,125 @@ function OutreachDripsView({
   }
 
   return (
-    <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(420px,0.84fr)_minmax(0,1.16fr)] xl:overflow-hidden">
-      <Panel title={form.id ? "Edit Drip" : "Create Drip"} eyebrow="Outreach sequence" icon={Zap}>
-        <form onSubmit={submitDrip} className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
+    <div className="h-full min-h-0 overflow-hidden">
+      <Panel title="Drip Library" eyebrow={`${formatNumber(drips.length)} saved`} icon={ClipboardList}>
+        <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/55 bg-white/34 px-3 py-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">
+              Active drips are evaluated by the hourly growth scheduler and deduped per user step.
+            </p>
+            <button
+              type="button"
+              onClick={() => openDripEditor()}
+              className="inline-flex min-h-9 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)]"
+            >
+              <Zap aria-hidden="true" size={15} strokeWidth={1.9} />
+              Create drip
+            </button>
+          </div>
+          <ScrollStack>
+            {drips.map((drip) => (
+              <SignalRow
+                key={drip.id}
+                title={drip.name}
+                detail={`${labelize(drip.status)} / ${drip.audience_key ? labelize(drip.audience_key) : "no audience"} / ${formatNumber(drip.steps?.length ?? 0)} steps`}
+                value={drip.updated_at ? formatDateTime(drip.updated_at) : `#${drip.id}`}
+                onClick={() => openDripEditor(drip)}
+              />
+            ))}
+            {!drips.length ? (
+              <QuietState icon={AlertTriangle} title="No drips yet" detail="Create a drip shell and connect templates to start sequencing outreach." tone="warn" />
+            ) : null}
+          </ScrollStack>
+        </div>
+      </Panel>
+      {editorOpen ? (
+        <OutreachDripModal
+          audiences={audiences}
+          form={form}
+          onClose={() => setEditorOpen(false)}
+          onFormChange={setForm}
+          onSubmit={submitDrip}
+          saving={saving}
+          templates={templates}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function OutreachDripModal({
+  audiences,
+  form,
+  onClose,
+  onFormChange,
+  onSubmit,
+  saving,
+  templates,
+}: {
+  audiences: GrowthOutreachAudience[];
+  form: OutreachDripForm;
+  onClose: () => void;
+  onFormChange: React.Dispatch<React.SetStateAction<OutreachDripForm>>;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  saving: boolean;
+  templates: GrowthOutreachTemplate[];
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/24 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <section
+        className="grid max-h-[90dvh] w-full max-w-4xl grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-white/65 bg-white/76 shadow-[0_34px_120px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-4 border-b border-white/60 bg-white/28 px-5 py-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-black/50">Scheduled outreach sequence</p>
+            <h2 className="mt-0.5 truncate text-2xl font-semibold tracking-tight text-black">{form.id ? "Edit drip" : "Create drip"}</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close drip editor" className="grid size-9 shrink-0 place-items-center rounded-full border border-white/65 bg-white/50 text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(0,0,0,0.16)]">
+            <X aria-hidden="true" size={16} strokeWidth={2} />
+          </button>
+        </div>
+        <form onSubmit={onSubmit} className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3 p-4">
           <div className="grid min-h-0 gap-3 overflow-y-auto pr-1">
             <div className="grid gap-2 sm:grid-cols-2">
-              <OutreachInput label="Name" value={form.name} onChange={(value) => setForm((current) => ({ ...current, name: value }))} />
+              <OutreachInput label="Name" value={form.name} onChange={(value) => onFormChange((current) => ({ ...current, name: value }))} />
               <OutreachSelect
                 label="Status"
                 value={form.status}
-                onChange={(value) => setForm((current) => ({ ...current, status: value as OutreachDripForm["status"] }))}
+                onChange={(value) => onFormChange((current) => ({ ...current, status: value as OutreachDripForm["status"] }))}
                 options={[["draft", "Draft"], ["active", "Active"], ["paused", "Paused"], ["archived", "Archived"]]}
               />
             </div>
             <OutreachSelect
               label="Audience"
               value={form.audience_key}
-              onChange={(value) => setForm((current) => ({ ...current, audience_key: value }))}
+              onChange={(value) => onFormChange((current) => ({ ...current, audience_key: value }))}
               options={[["", "Choose audience"], ...audiences.map((audience) => [audience.key, audience.label] as [string, string])]}
             />
-            <OutreachInput label="Goal" value={form.goal} onChange={(value) => setForm((current) => ({ ...current, goal: value }))} placeholder="Increase D7 retention, rescue streaks..." />
+            <OutreachInput label="Goal" value={form.goal} onChange={(value) => onFormChange((current) => ({ ...current, goal: value }))} placeholder="Increase D7 retention, rescue streaks..." />
             <label className="grid gap-1.5">
               <span className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Description</span>
               <textarea
+                aria-label="Description"
                 value={form.description}
-                onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+                onChange={(event) => onFormChange((current) => ({ ...current, description: event.target.value }))}
                 className="min-h-24 resize-none rounded-lg border border-white/65 bg-white/46 px-3 py-2.5 text-sm leading-6 text-black outline-none transition focus:border-[#5068e7] focus:bg-white/68"
               />
             </label>
             <div className="rounded-lg border border-white/55 bg-white/36 p-3">
               <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-black/48">First step</p>
               <div className="grid gap-2 sm:grid-cols-2">
-                <OutreachInput label="Step name" value={form.step_name} onChange={(value) => setForm((current) => ({ ...current, step_name: value }))} />
+                <OutreachInput label="Step name" value={form.step_name} onChange={(value) => onFormChange((current) => ({ ...current, step_name: value }))} />
                 <OutreachSelect
                   label="Channel"
                   value={form.step_channel}
-                  onChange={(value) => setForm((current) => ({ ...current, step_channel: value as "email" | "push" }))}
+                  onChange={(value) => onFormChange((current) => ({ ...current, step_channel: value as "email" | "push" }))}
                   options={[["email", "Email"], ["push", "Push notification"]]}
                 />
               </div>
@@ -1183,46 +1337,27 @@ function OutreachDripsView({
                 <OutreachSelect
                   label="Template"
                   value={form.step_template_id}
-                  onChange={(value) => setForm((current) => ({ ...current, step_template_id: value }))}
+                  onChange={(value) => onFormChange((current) => ({ ...current, step_template_id: value }))}
                   options={[["", "No template"], ...templates.map((template) => [String(template.id), template.name] as [string, string])]}
                 />
-                <OutreachInput label="Delay" value={form.delay_amount} onChange={(value) => setForm((current) => ({ ...current, delay_amount: value.replace(/\D/g, "") }))} />
+                <OutreachInput label="Delay" value={form.delay_amount} onChange={(value) => onFormChange((current) => ({ ...current, delay_amount: value.replace(/\D/g, "") }))} />
                 <OutreachSelect
                   label="Unit"
                   value={form.delay_unit}
-                  onChange={(value) => setForm((current) => ({ ...current, delay_unit: value as OutreachDripForm["delay_unit"] }))}
+                  onChange={(value) => onFormChange((current) => ({ ...current, delay_unit: value as OutreachDripForm["delay_unit"] }))}
                   options={[["minutes", "Minutes"], ["hours", "Hours"], ["days", "Days"]]}
                 />
               </div>
             </div>
           </div>
-          <div className="flex justify-between gap-2 border-t border-white/55 pt-3">
-            <button type="button" onClick={() => setForm(emptyDripForm())} className="min-h-10 rounded-full border border-white/65 bg-white/42 px-4 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_12px_32px_rgba(0,0,0,0.12)]">
-              New
-            </button>
+          <div className="flex justify-end gap-2 border-t border-white/55 pt-3">
             <button type="submit" disabled={saving || !form.name.trim()} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:cursor-not-allowed disabled:opacity-55">
               <Save aria-hidden="true" size={15} strokeWidth={1.9} />
               {saving ? "Saving" : "Save"}
             </button>
           </div>
         </form>
-      </Panel>
-      <Panel title="Drip Library" eyebrow={`${formatNumber(drips.length)} saved`} icon={ClipboardList}>
-        <ScrollStack>
-          {drips.map((drip) => (
-            <SignalRow
-              key={drip.id}
-              title={drip.name}
-              detail={`${labelize(drip.status)} / ${drip.audience_key ? labelize(drip.audience_key) : "no audience"} / ${formatNumber(drip.steps?.length ?? 0)} steps`}
-              value={drip.updated_at ? formatDateTime(drip.updated_at) : `#${drip.id}`}
-              onClick={() => setForm(dripFormFromDrip(drip))}
-            />
-          ))}
-          {!drips.length ? (
-            <QuietState icon={AlertTriangle} title="No drips yet" detail="Create a drip shell and connect templates to start sequencing outreach." tone="warn" />
-          ) : null}
-        </ScrollStack>
-      </Panel>
+      </section>
     </div>
   );
 }
@@ -1235,29 +1370,34 @@ function OutreachAudiencesView({
   onInspect: (detail: DetailView) => void;
 }) {
   return (
-    <Panel title="Audiences" eyebrow="Estimated reachable cohorts" icon={Users}>
-      <ScrollStack>
-        {audiences.map((audience) => (
-          <SignalRow
-            key={audience.key}
-            title={audience.label}
-            detail={audience.description}
-            value={formatNumber(audience.count)}
-            onClick={() => onInspect({
-              eyebrow: "Audience",
-              title: audience.label,
-              rows: [
-                { label: "Key", value: audience.key },
-                { label: "Users", value: audience.count },
-                { label: "Description", value: audience.description },
-              ],
-            })}
-          />
-        ))}
-        {!audiences.length ? (
-          <QuietState icon={AlertTriangle} title="No audience estimates" detail="The backend outreach endpoint is not returning audience counts yet." tone="warn" />
-        ) : null}
-      </ScrollStack>
+    <Panel title="Audiences" eyebrow="Reachable cohorts" icon={Users}>
+      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
+        <p className="rounded-lg border border-white/55 bg-white/34 px-3 py-2 text-xs font-medium text-black/56">
+          Counts are live backend estimates from <span className="font-semibold text-black/72">users</span>, <span className="font-semibold text-black/72">user_subscriptions</span>, notification preference fields, FCM tokens, and last activity timestamps.
+        </p>
+        <ScrollStack>
+          {audiences.map((audience) => (
+            <SignalRow
+              key={audience.key}
+              title={audience.label}
+              detail={audience.description}
+              value={formatNumber(audience.count)}
+              onClick={() => onInspect({
+                eyebrow: "Audience",
+                title: audience.label,
+                rows: [
+                  { label: "Key", value: audience.key },
+                  { label: "Users", value: audience.count },
+                  { label: "Description", value: audience.description },
+                ],
+              })}
+            />
+          ))}
+          {!audiences.length ? (
+            <QuietState icon={AlertTriangle} title="No audience estimates" detail="The backend outreach endpoint is not returning audience counts yet." tone="warn" />
+          ) : null}
+        </ScrollStack>
+      </div>
     </Panel>
   );
 }
@@ -1275,6 +1415,9 @@ function OutreachEmailView({
     <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] xl:overflow-hidden">
       <Panel title="Email Delivery Mix" eyebrow="Template and status volume" icon={Mail}>
         <ScrollStack>
+          <p className="mb-2 rounded-lg border border-white/55 bg-white/34 px-3 py-2 text-xs font-medium text-black/56">
+            This page uses recorded SendGrid/outreach rows in <span className="font-semibold text-black/72">growth_email_messages</span>; legacy counts come from <span className="font-semibold text-black/72">email_notifications</span>.
+          </p>
           <div className="grid gap-2 sm:grid-cols-4">
             <TinyStat label="Total email" value={formatNumber(outreach?.performance.email_total ?? dashboard.emails.total)} />
             <TinyStat label="Failed" value={formatNumber(outreach?.performance.email_failed ?? dashboard.emails.failed)} />
@@ -1301,6 +1444,9 @@ function OutreachNotificationsView({
   return (
     <Panel title="Notifications" eyebrow="Push outreach" icon={Send}>
       <ScrollStack>
+        <p className="mb-2 rounded-lg border border-white/55 bg-white/34 px-3 py-2 text-xs font-medium text-black/56">
+          Notification volume is grouped from <span className="font-semibold text-black/72">notification_logs</span>, which is written by the existing Firebase notification jobs and Outreach push steps.
+        </p>
         <TinyStat label="Total push records" value={formatNumber(dashboard.notifications.total)} />
         {dashboard.notifications.by_type.map((notification) => (
           <SignalRow
@@ -1524,11 +1670,16 @@ function SystemPage({
   onInspect: (detail: DetailView) => void;
   readiness: GrowthReadiness;
 }) {
+  const healthChecks = dashboard.health.checks
+    .filter((check) => !isLoopsVendorKey(check.key) && !isLoopsVendorKey(check.label))
+    .map(normalizeSystemHealthCheck);
+  const readinessIntegrations = Object.entries(readiness.integrations).filter(([key]) => !isLoopsVendorKey(key));
+
   return (
     <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] xl:overflow-hidden">
-      <Panel title="System Health" eyebrow="Vendor status" icon={ShieldCheck}>
+      <Panel title="System Health" eyebrow="Operational checks" icon={ShieldCheck}>
         <ScrollStack>
-          {dashboard.health.checks.map((check) => (
+          {healthChecks.map((check) => (
             <button
               key={check.key}
               type="button"
@@ -1546,7 +1697,7 @@ function SystemPage({
         </ScrollStack>
       </Panel>
       <div className="grid min-h-0 gap-3 lg:grid-cols-2">
-        <Panel title="Readiness" eyebrow="Backend wiring" icon={CheckCircle2}>
+        <Panel title="Readiness" eyebrow="Data and scheduler" icon={CheckCircle2}>
           <ScrollStack>
             <div className="grid gap-2">
               <TinyStat label="Required ready" value={`${readiness.ready_count}/${readiness.required_count}`} />
@@ -1564,7 +1715,7 @@ function SystemPage({
                   })}
                 />
               ))}
-              {Object.entries(readiness.integrations).map(([key, value]) => (
+              {readinessIntegrations.map(([key, value]) => (
                 <SignalRow
                   key={`integration-${key}`}
                   title={labelize(key)}
@@ -1581,23 +1732,13 @@ function SystemPage({
             </div>
           </ScrollStack>
         </Panel>
-        <Panel title="Endpoints" eyebrow="Connected APIs" icon={Send}>
+        <Panel title="Data Sources" eyebrow="What powers this view" icon={DatabaseIcon}>
           <ScrollStack>
-            {Object.entries(readiness.endpoints ?? {}).map(([key, value]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => onInspect({
-                  eyebrow: "Endpoint",
-                  title: labelize(key),
-                  description: value,
-                })}
-                className="grid gap-1 border-b border-black/10 py-2.5 text-left transition hover:translate-x-1 last:border-0"
-              >
-                <p className="text-sm font-semibold text-black">{labelize(key)}</p>
-                <p className="truncate font-mono text-xs text-black/58">{value}</p>
-              </button>
-            ))}
+            <SignalRow title="Users and audiences" detail="users, user_subscriptions, fcm_token, is_notification, last_active_at" value={formatNumber(dashboard.summary.users.total)} />
+            <SignalRow title="Email stream" detail="growth_email_messages plus legacy email_notifications totals" value={formatNumber(dashboard.emails.total)} />
+            <SignalRow title="Notifications" detail="notification_logs grouped by notification_type" value={formatNumber(dashboard.notifications.total)} />
+            <SignalRow title="Growth scheduler" detail="growth:run-lifecycle hourly when automation is enabled" value={dashboard.automation.last_run ? "Running" : "No run"} tone={dashboard.automation.last_run ? "good" : "warn"} />
+            <SignalRow title="Last automation" detail={dashboard.automation.last_run?.finished_at ? formatDateTime(dashboard.automation.last_run.finished_at) : "No completed run recorded"} value={dashboard.automation.last_run?.status ? titleCase(dashboard.automation.last_run.status) : "Missing"} tone={dashboard.automation.last_run ? "good" : "warn"} />
           </ScrollStack>
         </Panel>
       </div>
@@ -1916,49 +2057,6 @@ function LineChart({
   );
 }
 
-function FunnelSnapshot({
-  funnel,
-  onClick,
-}: {
-  funnel: GrowthDashboardData["funnel"];
-  onClick: () => void;
-}) {
-  const visible = funnel.slice(0, 5);
-  const max = Math.max(...visible.map((item) => item.count), 1);
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="grid h-full min-h-0 w-full grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-white/55 bg-white/42 p-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)]"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <p className="truncate text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Conversion shape</p>
-        <Maximize2 aria-hidden="true" size={14} strokeWidth={1.9} className="text-black/34" />
-      </div>
-      <div className="grid min-h-0 content-center gap-3">
-        {visible.map((item, index) => (
-          <div key={item.key} className="grid gap-1.5">
-            <div className="flex items-center justify-between gap-3 text-xs">
-              <span className="truncate font-semibold text-black">{item.label}</span>
-              <span className="shrink-0 tabular-nums text-black/58">{formatNumber(item.count)}</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-black/[0.08]">
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${Math.max(item.count > 0 ? 3 : 0, (item.count / max) * 100)}%`,
-                  backgroundColor: chartColors[index % chartColors.length],
-                }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </button>
-  );
-}
-
 function RetentionCurveCard({
   onClick,
   retention,
@@ -1977,9 +2075,9 @@ function RetentionCurveCard({
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <p className="truncate text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Retention curve</p>
-          <span className="rounded-full bg-[#fff9e8] px-2 py-0.5 text-[11px] font-semibold text-[#9b710c]">Gold line</span>
+          <span className="rounded-full bg-[#fff9e8] px-2 py-0.5 text-[10px] font-semibold text-[#9b710c]">Product targets</span>
         </div>
-        <p className="shrink-0 text-xl font-semibold tabular-nums text-black">{formatPercent(latestRate)}</p>
+        <p className="shrink-0 text-sm font-semibold tabular-nums text-black">D30 {formatPercent(latestRate)}</p>
       </div>
       <RetentionCurveChart retention={retention} />
     </button>
@@ -1991,6 +2089,9 @@ function RetentionCurveChart({
 }: {
   retention: GrowthDashboardData["summary"]["users"]["retention"];
 }) {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const rawGradientId = useId();
+  const gradientId = `retention-${rawGradientId.replace(/:/g, "")}`;
   const rows = [
     { key: "d1" as const, label: "D1", rate: retention.d1?.rate ?? 0, target: retentionTargets.d1 },
     { key: "d7" as const, label: "D7", rate: retention.d7?.rate ?? 0, target: retentionTargets.d7 },
@@ -2006,11 +2107,34 @@ function RetentionCurveChart({
     targetY: height - 28 - (row.target / max) * 78,
   }));
   const currentPath = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const currentArea = `28,100 ${currentPath} 292,100`;
   const targetPath = points.map((point) => `${point.x},${point.targetY}`).join(" ");
+  const activePoint = hoverIndex === null ? null : points[hoverIndex] ?? null;
+
+  function handlePointerMove(event: React.PointerEvent<SVGSVGElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
+    const bounded = Math.max(0, Math.min(1, ratio));
+    setHoverIndex(Math.round(bounded * (points.length - 1)));
+  }
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-full min-h-52 w-full" role="img" aria-label="Retention curve">
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="h-full min-h-40 w-full"
+      role="img"
+      aria-label="Retention curve"
+      onPointerMove={handlePointerMove}
+      onPointerLeave={() => setHoverIndex(null)}
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#111111" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="#111111" stopOpacity="0" />
+        </linearGradient>
+      </defs>
       <line x1="24" x2="296" y1="100" y2="100" stroke="rgba(0,0,0,0.10)" />
+      <polygon points={currentArea} fill={`url(#${gradientId})`} />
       <polyline
         points={targetPath}
         fill="none"
@@ -2024,25 +2148,44 @@ function RetentionCurveChart({
       <polyline
         points={currentPath}
         fill="none"
-        stroke="#5068e7"
+        stroke="#111111"
         strokeLinecap="round"
         strokeLinejoin="round"
-        strokeWidth="1.7"
+        strokeWidth="1.5"
         vectorEffect="non-scaling-stroke"
       />
       {points.map((point) => (
         <g key={point.key}>
-          <circle cx={point.x} cy={point.y} r="3" fill="#5068e7" />
-          <text x={point.x} y={point.y - 9} textAnchor="middle" className="fill-black text-[10px] font-semibold">
+          <circle cx={point.x} cy={point.y} r="2.6" fill="#111111" />
+          <circle cx={point.x} cy={point.targetY} r="2.2" fill="#d29a13" />
+          <text x={point.x} y={Math.max(14, point.y - 8)} textAnchor="middle" className="fill-black text-[9px] font-semibold">
             {formatPercent(point.rate)}
           </text>
-          <text x={point.x} y="119" textAnchor="middle" className="fill-black/50 text-[10px] font-semibold uppercase">
+          <text x={point.x} y="119" textAnchor="middle" className="fill-black/50 text-[9px] font-semibold uppercase">
             {point.label}
           </text>
         </g>
       ))}
-      <text x="208" y="17" className="fill-[#9b710c] text-[10px] font-semibold uppercase">Gold standard</text>
-      <text x="208" y="31" className="fill-[#5068e7] text-[10px] font-semibold uppercase">Current</text>
+      <g transform="translate(188, 10)">
+        <circle cx="0" cy="0" r="2.6" fill="#111111" />
+        <text x="7" y="3" className="fill-black/70 text-[8px] font-semibold uppercase">Current</text>
+        <circle cx="58" cy="0" r="2.4" fill="#d29a13" />
+        <text x="65" y="3" className="fill-[#9b710c] text-[8px] font-semibold uppercase">Target</text>
+      </g>
+      <text x="188" y="27" className="fill-[#9b710c] text-[8px] font-semibold">
+        D1 {retentionTargets.d1}% / D7 {retentionTargets.d7}% / D30 {retentionTargets.d30}%
+      </text>
+      {activePoint ? (
+        <g className="pointer-events-none">
+          <line x1={activePoint.x} x2={activePoint.x} y1="16" y2="101" stroke="rgba(0,0,0,0.16)" strokeDasharray="3 4" />
+          <g transform={`translate(${Math.max(6, Math.min(width - 114, activePoint.x - 52))}, ${activePoint.y > 58 ? activePoint.y - 45 : activePoint.y + 13})`}>
+            <rect width="108" height="38" rx="8" fill="rgba(255,255,255,0.94)" stroke="rgba(0,0,0,0.12)" />
+            <text x="9" y="15" className="fill-black/55 text-[8px] font-semibold uppercase">{activePoint.label} retention</text>
+            <text x="9" y="29" className="fill-black text-[10px] font-semibold">Now {formatPercent(activePoint.rate)}</text>
+            <text x="61" y="29" className="fill-[#9b710c] text-[10px] font-semibold">Target {formatPercent(activePoint.target)}</text>
+          </g>
+        </g>
+      ) : null}
     </svg>
   );
 }
@@ -2130,8 +2273,9 @@ function RetentionTargetGrid({
   ];
 
   return (
-    <div className={compact ? "grid gap-2" : "grid gap-2 md:grid-cols-3"}>
-      {items.map((item) => {
+    <div className="grid gap-2">
+      <div className={compact ? "grid gap-2" : "grid gap-2 md:grid-cols-3"}>
+        {items.map((item) => {
         const rate = item.cohort?.rate ?? 0;
         const scaleMax = Math.max(item.target * 1.55, rate, 1);
         const barWidth = Math.min(100, (rate / scaleMax) * 100);
@@ -2154,7 +2298,7 @@ function RetentionTargetGrid({
             </div>
             <div className="mt-2 flex items-end justify-between gap-3">
               <p className="text-xl font-semibold tabular-nums text-black">{formatPercent(rate)}</p>
-              <p className="text-xs font-semibold text-[#9b710c]">Gold {formatPercent(item.target)}</p>
+              <p className="text-xs font-semibold text-[#9b710c]">Target {formatPercent(item.target)}</p>
             </div>
             <div className="relative mt-2 h-2.5 rounded-full bg-black/[0.08]">
               <div
@@ -2173,7 +2317,13 @@ function RetentionTargetGrid({
             ) : null}
           </button>
         );
-      })}
+        })}
+      </div>
+      {!compact ? (
+        <p className="text-[11px] font-medium text-black/46">
+          Targets are configured product benchmarks for this dashboard: D1 {retentionTargets.d1}%, D7 {retentionTargets.d7}%, D30 {retentionTargets.d30}%. Current cohort values are shown in black; target markers are gold.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -2218,8 +2368,8 @@ function EmailStatusBars({
     return (
       <QuietState
         icon={AlertTriangle}
-        title="No lifecycle email rows"
-        detail="Loops and SendGrid activity will appear here after emails are recorded by the backend."
+        title="No outreach email rows"
+        detail="SendGrid activity will appear here after outreach emails are recorded by the backend."
         tone="warn"
       />
     );
@@ -2288,7 +2438,7 @@ function EmailRecentStream({
         <QuietState
           icon={AlertTriangle}
           title="No recent emails"
-          detail="The stream fills after lifecycle sends are recorded by the backend."
+          detail="The stream fills after outreach sends are recorded by the backend."
           tone="warn"
         />
       ) : null}
@@ -2567,7 +2717,7 @@ function GrowthChatModal({
   const suggestions = [
     "What should we fix first?",
     "Why is retention low?",
-    "What is happening with lifecycle email?",
+    "What is happening with outreach email?",
     "Which events are missing?",
   ];
 
@@ -3057,8 +3207,6 @@ function extractTemplateVariables(text: string) {
   return Array.from(variables);
 }
 
-const chartColors = ["#5068e7", "#209d13", "#ea6fcf", "#f9bc2c", "#f45253", "#111111"];
-
 function trendSummaryRows(data: GrowthTrendPoint[]) {
   const values = data.map((point) => point.count);
   const latest = values.at(-1) ?? 0;
@@ -3078,7 +3226,7 @@ function retentionCurveRows(retention: GrowthDashboardData["summary"]["users"]["
     const cohort = retention[key];
     return [
       { label: `${key.toUpperCase()} rate`, value: formatPercent(cohort?.rate ?? 0) },
-      { label: `${key.toUpperCase()} gold`, value: formatPercent(retentionTargets[key]) },
+      { label: `${key.toUpperCase()} target benchmark`, value: formatPercent(retentionTargets[key]) },
       { label: `${key.toUpperCase()} retained`, value: `${formatNumber(cohort?.retained ?? 0)} / ${formatNumber(cohort?.cohort ?? 0)}` },
     ];
   });
@@ -3098,7 +3246,7 @@ function growthOpeningMessage(dashboard: GrowthDashboardData) {
   const topTodo = dashboard.health.todos[0];
   return [
     `Health score is ${dashboard.health.score} (${titleCase(dashboard.health.status)}).`,
-    `D1/D7/D30 retention is ${formatPercent(retention.d1?.rate ?? 0)} / ${formatPercent(retention.d7?.rate ?? 0)} / ${formatPercent(retention.d30?.rate ?? 0)} against gold targets of ${retentionTargets.d1}% / ${retentionTargets.d7}% / ${retentionTargets.d30}%.`,
+    `D1/D7/D30 retention is ${formatPercent(retention.d1?.rate ?? 0)} / ${formatPercent(retention.d7?.rate ?? 0)} / ${formatPercent(retention.d30?.rate ?? 0)} against dashboard target benchmarks of ${retentionTargets.d1}% / ${retentionTargets.d7}% / ${retentionTargets.d30}%.`,
     topTodo ? `Top fix: ${topTodo.title}. ${topTodo.action}` : "No urgent operator tasks are open for this window.",
   ].join("\n\n");
 }
@@ -3114,20 +3262,20 @@ function growthAnswer(question: string, dashboard: GrowthDashboardData) {
 
   if (normalized.includes("retention") || normalized.includes("churn") || normalized.includes("return")) {
     return [
-      `Retention is below target: D1 is ${formatPercent(retention.d1?.rate ?? 0)} vs ${retentionTargets.d1}%, D7 is ${formatPercent(retention.d7?.rate ?? 0)} vs ${retentionTargets.d7}%, and D30 is ${formatPercent(retention.d30?.rate ?? 0)} vs ${retentionTargets.d30}%.`,
+      `Retention is below target: D1 is ${formatPercent(retention.d1?.rate ?? 0)} vs ${retentionTargets.d1}%, D7 is ${formatPercent(retention.d7?.rate ?? 0)} vs ${retentionTargets.d7}%, and D30 is ${formatPercent(retention.d30?.rate ?? 0)} vs ${retentionTargets.d30}%. Those targets are dashboard benchmarks, not computed from this cohort.`,
       "Near-term fix: instrument the missing onboarding/paywall events, then run one onboarding and one lifecycle experiment at a time so we can connect activation behavior to retention movement.",
       `Active 7d users are ${formatNumber(users.active_7d)} out of ${formatNumber(users.total)} total users.`,
     ].join("\n\n");
   }
 
-  if (normalized.includes("email") || normalized.includes("sendgrid") || normalized.includes("loops") || normalized.includes("spam")) {
+  if (normalized.includes("email") || normalized.includes("sendgrid") || normalized.includes("outreach") || normalized.includes("spam")) {
     return [
       `Email volume is ${formatNumber(dashboard.emails.total)} with a recorded failure rate of ${dashboard.emails.failure_rate}%.`,
       dashboard.readiness?.integrations.sendgrid_api_key ? "SendGrid is configured." : "SendGrid is not marked configured.",
-      dashboard.readiness?.integrations.loops_api_key && dashboard.readiness?.integrations.loops_webhook_secret
-        ? "Loops is configured."
-        : "Loops is not fully configured, so lifecycle email automation is still the highest-confidence setup gap.",
-      "For spam specifically, the dashboard can show send/failure records, but inbox placement needs domain authentication and provider-level deliverability signals surfaced from SendGrid/Loops.",
+      dashboard.readiness?.integrations.growth_automation_enabled
+        ? "The growth scheduler is enabled for Outreach drips."
+        : "The growth scheduler is not enabled, so active drips will not send yet.",
+      "For spam specifically, the dashboard can show send/failure records, but inbox placement still depends on SendGrid domain authentication and provider-level deliverability signals.",
     ].join("\n\n");
   }
 
@@ -3175,6 +3323,22 @@ function retentionDetail(label: string, cohort?: { cohort: number; retained: num
       { label: "Rate", value: `${cohort?.rate ?? 0}%` },
     ],
   };
+}
+
+function isLoopsVendorKey(value: string) {
+  return value.toLowerCase().includes("loops");
+}
+
+function normalizeSystemHealthCheck(check: GrowthHealthCheck): GrowthHealthCheck {
+  if (check.key === "sendgrid") {
+    return {
+      ...check,
+      label: "SendGrid outreach sends",
+      detail: check.detail.replace(/legacy email records/gi, "recorded email rows"),
+    };
+  }
+
+  return check;
 }
 
 function contentTitle(contentType: ContentKey, row: GrowthContentRow) {

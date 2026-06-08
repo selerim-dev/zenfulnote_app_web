@@ -589,7 +589,7 @@ export function fallbackGrowthDashboard(message: string): GrowthDashboardData {
       },
       endpoints: {
         dashboard: growthEndpoint("/api/internal/growth/dashboard"),
-        lifecycle: growthEndpoint("/api/internal/growth/run-lifecycle"),
+        outreach: growthEndpoint("/api/internal/growth/outreach"),
         client_events: growthEndpoint("/api/growth/events"),
         client_events_public: growthEndpoint("/api/growth/events/public"),
       },
