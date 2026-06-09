@@ -1,9 +1,9 @@
 export const homeContent = {
   hero: {
-    eyebrow: "Official shadow work journaling app",
+    eyebrow: "The official shadow work journal app",
     title: "ZenfulNote",
     description:
-      "A private space to check in, understand your patterns, and meet your inner world with more honesty.",
+      "By the creator of The Shadow Work Journal. Track triggers, glimmers, journal, and meditate in one private space built for deeper self-awareness.",
     image: "/images/screenshots/app-store-01.png",
     imageAlt:
       "ZenfulNote App Store screenshot showing the Explore screen for meditations, exercises, and prompts.",
@@ -11,21 +11,30 @@ export const homeContent = {
   moments: [
     {
       eyebrow: "Explore",
-      title: "Find calm, fast.",
-      description: "Meditations, exercises, and prompts organized by mood.",
+      title: "Find your center, fast.",
+      description:
+        "Access 200+ Depth Psychology Meditations, exercises, and prompts created by experts.",
       image: "/images/screenshots/app-store-01.png",
       imageAlt:
         "ZenfulNote Explore screen with meditations, exercises, and prompts.",
-      points: ["Meditations", "Exercises", "Guides"],
+      points: [
+        "Meditations",
+        "Exercises",
+        "Prompts",
+        "Quizzes",
+        "Learn About Depth Psychology",
+      ],
+      visual: "exercise-grid",
     },
     {
       eyebrow: "Check in",
-      title: "Notice the pattern.",
+      title: "Spot The Pattern",
       description: "Track glimmers, triggers, and emotional progress in seconds.",
       image: "/images/screenshots/app-store-02.png",
       imageAlt:
         "ZenfulNote Check-In screen for glimmers, triggers, and progress.",
       points: ["Glimmers", "Triggers", "Progress"],
+      visual: "pattern-checkin",
     },
     {
       eyebrow: "Journal",
@@ -35,11 +44,12 @@ export const homeContent = {
       imageAlt:
         "ZenfulNote guided prompt screen with reflection questions.",
       points: ["Prompts", "Shadow work", "Self-inquiry"],
+      visual: "journal-depth",
     },
   ],
   proofPoints: [
-    "Created by the author of The Shadow Work Journal",
-    "Built for triggers, glimmers, journaling, and meditation",
+    "By the creator of The Shadow Work Journal",
+    "Track triggers, glimmers, journal, and meditate",
     "A quieter app experience for daily self-discovery",
   ],
   blog: {

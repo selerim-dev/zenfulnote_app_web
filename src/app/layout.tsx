@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import Script from "next/script";
+import { ScrollRevealController } from "@/components/scroll-reveal-controller";
 import { siteConfig } from "@/config/site";
 import "./globals.css";
 
@@ -109,8 +111,15 @@ export default function RootLayout({
       lang="en"
       data-scroll-behavior="smooth"
       className={`${ppNeue.variable} ${lora.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="flex min-h-full flex-col">{children}</body>
+      <body className="flex min-h-full flex-col" suppressHydrationWarning>
+        <Script id="scroll-reveal-ready" strategy="beforeInteractive">
+          {`try{if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches){document.documentElement.classList.add("scroll-reveal-ready")}}catch(e){}`}
+        </Script>
+        <ScrollRevealController />
+        {children}
+      </body>
     </html>
   );
 }

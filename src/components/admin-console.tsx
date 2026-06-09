@@ -26,6 +26,7 @@ import {
   Music,
   PenLine,
   PlayCircle,
+  Plus,
   Quote,
   RefreshCw,
   Save,
@@ -33,6 +34,7 @@ import {
   ShieldCheck,
   Sparkles,
   TrendingUp,
+  Trash2,
   Upload,
   Users,
   X,
@@ -48,8 +50,10 @@ import type {
   GrowthOutreachAudience,
   GrowthOutreachData,
   GrowthOutreachDrip,
+  GrowthOutreachStep,
   GrowthOutreachTemplate,
   GrowthReadiness,
+  GrowthSendGridTemplate,
   GrowthTrendPoint,
 } from "@/lib/growth-dashboard";
 
@@ -109,6 +113,11 @@ type OutreachTemplateForm = {
   subject: string;
   preview_text: string;
   body: string;
+  external_provider: "" | "sendgrid";
+  external_template_id: string;
+  external_generation: string;
+  external_updated_at: string;
+  external_metadata?: Record<string, unknown> | null;
 };
 
 type OutreachDripForm = {
@@ -118,11 +127,19 @@ type OutreachDripForm = {
   audience_key: string;
   goal: string;
   description: string;
-  step_name: string;
-  step_channel: "email" | "push";
-  step_template_id: string;
+  steps: OutreachDripFormStep[];
+};
+
+type OutreachDripFormStep = {
+  id?: number;
+  local_id: string;
+  name: string;
+  channel: "email" | "push";
+  template_id: string;
+  trigger_key: string;
   delay_amount: string;
   delay_unit: "minutes" | "hours" | "days";
+  status: "active" | "paused";
 };
 
 const periodOptions = [7, 14, 30, 60, 90] as const;
@@ -149,6 +166,13 @@ const outreachViews: Array<{ key: OutreachViewKey; label: string }> = [
   { key: "audiences", label: "Audiences" },
   { key: "email", label: "Email stream" },
   { key: "notifications", label: "Notifications" },
+];
+
+const dripTriggerOptions: Array<[string, string]> = [
+  ["user_joined", "User joined"],
+  ["drip_enrolled", "Drip enrollment"],
+  ["last_active", "Last active"],
+  ["absolute", "Absolute/manual"],
 ];
 
 const contentTabs: Array<{ key: ContentKey; label: string; icon: LucideIcon }> = [
@@ -573,7 +597,7 @@ function OverviewPage({
       <div className="min-h-0 overflow-hidden">
       <Panel title="App Pulse" eyebrow={`${dashboard.period.days} day window`} icon={TrendingUp}>
         <div className="grid h-full min-h-0 gap-2.5 overflow-y-auto pr-1">
-          <div className="grid min-h-0 gap-3 md:grid-cols-3">
+          <div className="grid min-h-0 gap-5 md:grid-cols-3">
             <ChartBlock
               title="Daily active users"
               value={formatNumber(users.active_7d)}
@@ -613,22 +637,16 @@ function RetentionPage({
   const retention = dashboard.summary.users.retention;
 
   return (
-    <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] xl:overflow-hidden">
+    <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,0.96fr)_minmax(0,1.04fr)] xl:overflow-hidden">
       <Panel title="Retention Cohorts" eyebrow="Returned after signup" icon={HeartPulse}>
-        <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
-          <RetentionCurveCard
-            retention={retention}
-            onClick={() => onInspect({
-              eyebrow: "Retention curve",
-              title: "Current vs Target",
-              rows: retentionCurveRows(retention),
-            })}
-          />
-          <RetentionTargetGrid
-            retention={retention}
-            onInspect={(label, cohort) => onInspect(retentionDetail(label, cohort))}
-          />
-        </div>
+        <RetentionCurveCard
+          retention={retention}
+          onClick={() => onInspect({
+            eyebrow: "Retention curve",
+            title: "Current vs Target",
+            rows: retentionCurveRows(retention),
+          })}
+        />
       </Panel>
       <div className="grid min-h-0 gap-3 xl:grid-rows-[minmax(0,0.62fr)_minmax(0,0.38fr)]">
         <Panel title="Activation Mix" eyebrow="Core behaviors" icon={Activity}>
@@ -671,6 +689,9 @@ function EventsPage({
   dashboard: GrowthDashboardData;
   onInspect: (detail: DetailView) => void;
 }) {
+  const recentEvents = useMemo(() => dedupeRecentEvents(dashboard.events.recent), [dashboard.events.recent]);
+  const hiddenDuplicateCount = dashboard.events.recent.length - recentEvents.length;
+
   return (
     <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] xl:overflow-hidden">
       <Panel title="Event Coverage" eyebrow="Expected client taxonomy" icon={ClipboardList}>
@@ -680,16 +701,21 @@ function EventsPage({
             onClick={() => onInspect({
               eyebrow: "Event coverage",
               title: `${dashboard.events.coverage.percent}% covered`,
+              description: "Coverage compares the expected growth-event tracking plan against events actually seen in the selected period.",
               rows: [
                 { label: "Tracked", value: dashboard.events.coverage.tracked },
                 { label: "Expected", value: dashboard.events.coverage.expected },
                 { label: "Missing", value: dashboard.events.coverage.missing.length },
+                { label: "Total live events", value: dashboard.events.total },
               ],
             })}
-            className="grid gap-3 rounded-lg border border-white/55 bg-white/42 p-2 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)] sm:grid-cols-[150px_minmax(0,1fr)]"
+            className="grid gap-3 text-left transition hover:opacity-85 sm:grid-cols-[150px_minmax(0,1fr)]"
           >
             <RingMeter value={dashboard.events.coverage.percent} />
             <div className="grid content-center gap-2">
+              <p className="text-xs font-medium leading-5 text-black/56">
+                Seen this period from the expected event tracking plan.
+              </p>
               <TinyStat
                 label="Tracked"
                 value={`${dashboard.events.coverage.tracked}/${dashboard.events.coverage.expected}`}
@@ -726,13 +752,7 @@ function EventsPage({
       </Panel>
       <div className="grid min-h-0 gap-3 xl:grid-rows-[minmax(0,0.45fr)_minmax(0,0.55fr)]">
         <Panel title="Event Volume" eyebrow="Client signal trend" icon={TrendingUp}>
-          <ChartBlock
-            title="Daily growth events"
-            value={formatNumber(dashboard.events.total)}
-            data={dashboard.events.daily}
-            color="#ea6fcf"
-            onClick={() => onInspect(chartDetail("Daily growth events", formatNumber(dashboard.events.total), dashboard.events.daily, "#ea6fcf"))}
-          />
+          <EventVolumeBreakdown dashboard={dashboard} onInspect={onInspect} />
         </Panel>
         <div className="grid min-h-0 gap-3 lg:grid-cols-2">
           <Panel title="Top Events" eyebrow="Volume by event" icon={BarChart3}>
@@ -753,9 +773,14 @@ function EventsPage({
           </Panel>
           <Panel title="Recent Stream" eyebrow="Latest payloads" icon={Send}>
             <ScrollStack>
-              {dashboard.events.recent.map((event) => (
+              {hiddenDuplicateCount > 0 ? (
+                <p className="border-b border-black/10 py-2 text-xs font-medium leading-5 text-black/52">
+                  Hidden {formatNumber(hiddenDuplicateCount)} exact duplicate event rows with the same event, source, user, and timestamp.
+                </p>
+              ) : null}
+              {recentEvents.map((event) => (
                 <SignalRow
-                  key={`${event.event_name}-${event.created_at}`}
+                  key={recentEventKey(event)}
                   title={event.event_name}
                   detail={`${event.source} / user ${event.user_id ?? "anonymous"}`}
                   value={formatDateTime(event.created_at)}
@@ -770,7 +795,7 @@ function EventsPage({
                   })}
                 />
               ))}
-              {!dashboard.events.recent.length ? (
+              {!recentEvents.length ? (
                 <QuietState
                   icon={AlertTriangle}
                   title="No recent events"
@@ -780,6 +805,71 @@ function EventsPage({
               ) : null}
             </ScrollStack>
           </Panel>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EventVolumeBreakdown({
+  dashboard,
+  onInspect,
+}: {
+  dashboard: GrowthDashboardData;
+  onInspect: (detail: DetailView) => void;
+}) {
+  const topEvents = dashboard.events.top.slice(0, 5);
+  const topTotal = topEvents.reduce((sum, event) => sum + event.count, 0);
+  const max = Math.max(...topEvents.map((event) => event.count), 1);
+
+  return (
+    <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.42fr)]">
+      <ChartBlock
+        title="Daily growth events"
+        value={formatNumber(dashboard.events.total)}
+        data={dashboard.events.daily}
+        color="#ea6fcf"
+        onClick={() => onInspect(chartDetail("Daily growth events", formatNumber(dashboard.events.total), dashboard.events.daily, "#ea6fcf"))}
+      />
+      <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Top five events</p>
+            <p className="mt-1 text-xs font-medium text-black/52">Period composition from live event rows.</p>
+          </div>
+          <p className="shrink-0 text-lg font-semibold tabular-nums text-black">{formatNumber(topTotal)}</p>
+        </div>
+        <div className="mt-3 grid min-h-0 content-start gap-2 overflow-y-auto pr-1">
+          {topEvents.map((event, index) => (
+            <button
+              key={`${event.event_name}-${index}`}
+              type="button"
+              onClick={() => onInspect({
+                eyebrow: "Event volume",
+                title: event.event_name,
+                rows: [
+                  { label: "Count", value: event.count },
+                  { label: "Rank", value: index + 1 },
+                  { label: "Share of top five", value: topTotal ? `${Math.round((event.count / topTotal) * 100)}%` : "0%" },
+                ],
+              })}
+              className="grid gap-1.5 border-b border-black/10 py-2 text-left transition last:border-0 hover:translate-x-1"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="min-w-0 truncate text-xs font-semibold text-black">{event.event_name}</p>
+                <span className="shrink-0 text-xs font-semibold tabular-nums text-black/68">{formatNumber(event.count)}</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-black/[0.08]">
+                <div
+                  className="h-full rounded-full bg-[#ea6fcf]"
+                  style={{ width: `${Math.max(4, (event.count / max) * 100)}%` }}
+                />
+              </div>
+            </button>
+          ))}
+          {!topEvents.length ? (
+            <QuietState icon={AlertTriangle} title="No event mix" detail="Top event composition will appear after client events arrive." tone="warn" />
+          ) : null}
         </div>
       </div>
     </div>
@@ -875,7 +965,13 @@ function OutreachPage({
         {outreachView === "drips" ? <OutreachDripsView onNotice={onNotice} onSaveDrip={onSaveDrip} outreach={outreach} /> : null}
         {outreachView === "audiences" ? <OutreachAudiencesView audiences={outreach?.audiences ?? []} onInspect={onInspect} /> : null}
         {outreachView === "email" ? <OutreachEmailView dashboard={dashboard} onInspect={onInspect} outreach={outreach} /> : null}
-        {outreachView === "notifications" ? <OutreachNotificationsView dashboard={dashboard} onInspect={onInspect} /> : null}
+        {outreachView === "notifications" ? (
+          <OutreachNotificationsView
+            dashboard={dashboard}
+            onCreatePushTemplate={() => onOutreachViewChange("templates")}
+            onInspect={onInspect}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -957,7 +1053,22 @@ function OutreachPerformanceView({
         <Panel title="Status Mix" eyebrow="Send outcomes" icon={BarChart3}>
           <ScrollStack>
             {(performance?.status_mix ?? []).map((status) => (
-              <SignalRow key={status.status} title={labelize(status.status)} value={formatNumber(status.count)} />
+              <SignalRow
+                key={status.status}
+                title={labelize(status.status)}
+                value={formatNumber(status.count)}
+                onClick={() => onInspect({
+                  eyebrow: "Send outcome",
+                  title: labelize(status.status),
+                  description: status.status.toLowerCase() === "skipped"
+                    ? "Skipped rows were recorded as not sent and are not counted as SendGrid failures. The current backend response does not include skip reasons."
+                    : null,
+                  rows: [
+                    { label: "Status", value: status.status },
+                    { label: "Count", value: status.count },
+                  ],
+                })}
+              />
             ))}
             {!performance?.status_mix?.length ? (
               <QuietState icon={AlertTriangle} title="No status mix" detail="Email status rows will appear after outreach sends are logged." tone="warn" />
@@ -983,13 +1094,48 @@ function OutreachTemplatesView({
 }) {
   const [form, setForm] = useState<OutreachTemplateForm>(emptyTemplateForm());
   const [editorOpen, setEditorOpen] = useState(false);
+  const [sendGridOpen, setSendGridOpen] = useState(false);
+  const [sendGridLoading, setSendGridLoading] = useState(false);
+  const [sendGridTemplates, setSendGridTemplates] = useState<GrowthSendGridTemplate[]>([]);
   const [saving, setSaving] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const templates = outreach?.templates ?? [];
 
-  function openTemplateEditor(template?: GrowthOutreachTemplate) {
-    setForm(template ? templateFormFromTemplate(template) : emptyTemplateForm());
+  function openTemplateEditor(template?: GrowthOutreachTemplate, channel: "email" | "push" = "email") {
+    setForm(template ? templateFormFromTemplate(template) : { ...emptyTemplateForm(), channel });
     setEditorOpen(true);
+  }
+
+  async function openSendGridImport() {
+    setSendGridOpen(true);
+    setSendGridLoading(true);
+    try {
+      const response = await fetch("/api/admin/growth/outreach/sendgrid-templates", {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok || !body?.data) {
+        throw new Error(body?.error ?? "SendGrid templates could not be loaded.");
+      }
+      setSendGridTemplates(body.data as GrowthSendGridTemplate[]);
+    } catch (error) {
+      onNotice({ tone: "danger", message: error instanceof Error ? error.message : "SendGrid templates could not be loaded." });
+    } finally {
+      setSendGridLoading(false);
+    }
+  }
+
+  async function importSendGridTemplate(template: GrowthSendGridTemplate) {
+    setSaving(true);
+    try {
+      await onSaveTemplate(templatePayloadFromSendGrid(template));
+      setSendGridOpen(false);
+    } catch (error) {
+      onNotice({ tone: "danger", message: error instanceof Error ? error.message : "SendGrid template import failed." });
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function submitTemplate(event: React.FormEvent<HTMLFormElement>) {
@@ -1047,29 +1193,47 @@ function OutreachTemplatesView({
         <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/55 bg-white/34 px-3 py-2">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">
-              Click a template to edit it. Active templates can be used by scheduled drips.
+              Email, push, and linked SendGrid templates used by scheduled drips.
             </p>
-            <button
-              type="button"
-              onClick={() => openTemplateEditor()}
-              className="inline-flex min-h-9 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)]"
-            >
-              <FileText aria-hidden="true" size={15} strokeWidth={1.9} />
-              Create template
-            </button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={openSendGridImport}
+                className="inline-flex min-h-9 items-center gap-2 rounded-full border border-white/65 bg-white/56 px-3 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(80,104,231,0.14)]"
+              >
+                <ExternalLink aria-hidden="true" size={15} strokeWidth={1.9} />
+                Import SendGrid
+              </button>
+              <button
+                type="button"
+                onClick={() => openTemplateEditor(undefined, "push")}
+                className="inline-flex min-h-9 items-center gap-2 rounded-full border border-white/65 bg-white/56 px-3 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(80,104,231,0.14)]"
+              >
+                <Send aria-hidden="true" size={15} strokeWidth={1.9} />
+                Push template
+              </button>
+              <button
+                type="button"
+                onClick={() => openTemplateEditor(undefined, "email")}
+                className="inline-flex min-h-9 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)]"
+              >
+                <FileText aria-hidden="true" size={15} strokeWidth={1.9} />
+                Email template
+              </button>
+            </div>
           </div>
           <ScrollStack>
             {templates.map((template) => (
               <SignalRow
                 key={template.id}
                 title={template.name}
-                detail={`${labelize(template.channel)} / ${labelize(template.status)}${template.category ? ` / ${template.category}` : ""}`}
+                detail={`${template.external_provider === "sendgrid" ? "SendGrid" : labelize(template.channel)} / ${labelize(template.status)}${template.category ? ` / ${template.category}` : ""}${template.external_template_id ? ` / ${template.external_template_id}` : ""}`}
                 value={template.updated_at ? formatDateTime(template.updated_at) : `#${template.id}`}
                 onClick={() => openTemplateEditor(template)}
               />
             ))}
             {!templates.length ? (
-              <QuietState icon={AlertTriangle} title="No templates yet" detail="Create the first email or push template from the editor." tone="warn" />
+              <QuietState icon={AlertTriangle} title="No templates yet" detail="Create an email or push template, or import existing SendGrid dynamic templates." tone="warn" />
             ) : null}
           </ScrollStack>
         </div>
@@ -1085,6 +1249,91 @@ function OutreachTemplatesView({
           saving={saving}
         />
       ) : null}
+      {sendGridOpen ? (
+        <SendGridTemplateImportModal
+          loading={sendGridLoading}
+          onClose={() => setSendGridOpen(false)}
+          onImport={importSendGridTemplate}
+          saving={saving}
+          templates={sendGridTemplates}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function SendGridTemplateImportModal({
+  loading,
+  onClose,
+  onImport,
+  saving,
+  templates,
+}: {
+  loading: boolean;
+  onClose: () => void;
+  onImport: (template: GrowthSendGridTemplate) => void;
+  saving: boolean;
+  templates: GrowthSendGridTemplate[];
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/24 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <section
+        className="grid max-h-[86dvh] w-full max-w-4xl grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-white/65 bg-white/76 shadow-[0_34px_120px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-4 border-b border-white/60 bg-white/28 px-5 py-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-black/50">SendGrid dynamic templates</p>
+            <h2 className="mt-0.5 truncate text-2xl font-semibold tracking-tight text-black">Import sender template</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close SendGrid import" className="grid size-9 shrink-0 place-items-center rounded-full border border-white/65 bg-white/50 text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(0,0,0,0.16)]">
+            <X aria-hidden="true" size={16} strokeWidth={2} />
+          </button>
+        </div>
+        <div className="min-h-0 overflow-y-auto p-4">
+          <p className="mb-3 rounded-lg border border-white/55 bg-white/38 px-3 py-2 text-xs font-medium leading-5 text-black/58">
+            These are existing SendGrid transactional templates. Importing one creates a ZenfulNote outreach template that stores the SendGrid template ID and lets drips send through that sender-side design.
+          </p>
+          {loading ? (
+            <div className="grid gap-2">
+              {[0, 1, 2].map((item) => (
+                <div key={item} className="h-16 animate-pulse rounded-lg border border-white/55 bg-white/46" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              {templates.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  onClick={() => onImport(template)}
+                  disabled={saving || Boolean(template.linked_template_id)}
+                  className="grid gap-2 border-b border-black/10 py-3 text-left transition last:border-0 hover:translate-x-1 disabled:cursor-not-allowed disabled:opacity-58 sm:grid-cols-[minmax(0,1fr)_auto]"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-black">{template.name}</p>
+                    <p className="mt-0.5 truncate text-xs text-black/50">
+                      {template.active_version?.subject || "No active subject surfaced"} / {template.generation || "dynamic"}
+                    </p>
+                    <p className="mt-1 truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-black/36">{template.id}</p>
+                  </div>
+                  <span className="self-center rounded-full border border-white/65 bg-white/54 px-3 py-1 text-xs font-semibold text-black">
+                    {template.linked_template_id ? "Linked" : saving ? "Saving" : "Import"}
+                  </span>
+                </button>
+              ))}
+              {!templates.length ? (
+                <QuietState icon={AlertTriangle} title="No SendGrid templates" detail="SendGrid returned no dynamic transactional templates for this API key." tone="warn" />
+              ) : null}
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
@@ -1133,7 +1382,12 @@ function OutreachTemplateModal({
               <OutreachSelect
                 label="Channel"
                 value={form.channel}
-                onChange={(value) => onFormChange((current) => ({ ...current, channel: value as "email" | "push" }))}
+                onChange={(value) => onFormChange((current) => ({
+                  ...current,
+                  channel: value as "email" | "push",
+                  external_provider: value === "push" ? "" : current.external_provider,
+                  external_template_id: value === "push" ? "" : current.external_template_id,
+                }))}
                 options={[["email", "Email"], ["push", "Push notification"]]}
               />
             </div>
@@ -1146,25 +1400,52 @@ function OutreachTemplateModal({
                 options={[["draft", "Draft"], ["active", "Active"], ["archived", "Archived"]]}
               />
             </div>
+            {form.channel === "email" ? (
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                <OutreachSelect
+                  label="Sender source"
+                  value={form.external_provider}
+                  onChange={(value) => onFormChange((current) => ({
+                    ...current,
+                    external_provider: value === "sendgrid" ? "sendgrid" : "",
+                    external_template_id: value === "sendgrid" ? current.external_template_id : "",
+                    external_generation: value === "sendgrid" ? current.external_generation : "",
+                    external_updated_at: value === "sendgrid" ? current.external_updated_at : "",
+                    external_metadata: value === "sendgrid" ? current.external_metadata : null,
+                  }))}
+                  options={[["", "Native body"], ["sendgrid", "SendGrid dynamic template"]]}
+                />
+                <OutreachInput
+                  label="SendGrid template ID"
+                  value={form.external_template_id}
+                  onChange={(value) => onFormChange((current) => ({ ...current, external_template_id: value, external_provider: value ? "sendgrid" : current.external_provider }))}
+                  placeholder="d-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                />
+              </div>
+            ) : (
+              <p className="rounded-lg border border-white/55 bg-white/36 px-3 py-2 text-xs font-medium leading-5 text-black/58">
+                Push notification templates use the title and body below and are sent by Firebase from the scheduled drip runner.
+              </p>
+            )}
             <OutreachInput label={form.channel === "push" ? "Push title" : "Subject"} value={form.subject} onChange={(value) => onFormChange((current) => ({ ...current, subject: value }))} />
             <OutreachInput label="Preview text" value={form.preview_text} onChange={(value) => onFormChange((current) => ({ ...current, preview_text: value }))} />
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Body</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{form.external_provider === "sendgrid" ? "Fallback/context body" : "Body"}</span>
               <textarea
                 aria-label="Body"
                 value={form.body}
                 onChange={(event) => onFormChange((current) => ({ ...current, body: event.target.value }))}
-                placeholder="Write the editable outreach body here. Use {{first_name}} and {{deep_link}} variables."
+                placeholder={form.external_provider === "sendgrid" ? "Optional internal note or fallback context. SendGrid renders the actual email body." : "Write the editable outreach body here. Use {{first_name}} and {{deep_link}} variables."}
                 className="min-h-56 resize-none rounded-lg border border-white/65 bg-white/46 px-3 py-2.5 text-sm leading-6 text-black outline-none transition placeholder:text-black/34 focus:border-[#5068e7] focus:bg-white/68"
               />
             </label>
           </div>
           <div className="flex justify-end gap-2 border-t border-white/55 pt-3">
-            <button type="button" onClick={onDraft} disabled={drafting} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/65 bg-white/50 px-4 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(80,104,231,0.14)] disabled:cursor-wait disabled:opacity-60">
+            <button type="button" onClick={onDraft} disabled={drafting || form.external_provider === "sendgrid"} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/65 bg-white/50 px-4 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(80,104,231,0.14)] disabled:cursor-not-allowed disabled:opacity-60">
               <Sparkles aria-hidden="true" size={15} strokeWidth={1.9} />
               {drafting ? "Drafting" : "Draft"}
             </button>
-            <button type="submit" disabled={saving || !form.name.trim()} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:cursor-not-allowed disabled:opacity-55">
+            <button type="submit" disabled={saving || !form.name.trim() || (form.external_provider === "sendgrid" && !form.external_template_id.trim())} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:cursor-not-allowed disabled:opacity-55">
               <Save aria-hidden="true" size={15} strokeWidth={1.9} />
               {saving ? "Saving" : "Save"}
             </button>
@@ -1275,6 +1556,33 @@ function OutreachDripModal({
   saving: boolean;
   templates: GrowthOutreachTemplate[];
 }) {
+  function updateStep(localId: string, patch: Partial<OutreachDripFormStep>) {
+    onFormChange((current) => ({
+      ...current,
+      steps: current.steps.map((step) => (step.local_id === localId ? { ...step, ...patch } : step)),
+    }));
+  }
+
+  function addStep() {
+    onFormChange((current) => ({
+      ...current,
+      steps: [
+        ...current.steps,
+        {
+          ...emptyDripStep(current.steps.length + 1),
+          local_id: `new-step-${current.steps.length + 1}-${Date.now()}`,
+        },
+      ],
+    }));
+  }
+
+  function removeStep(localId: string) {
+    onFormChange((current) => ({
+      ...current,
+      steps: current.steps.length > 1 ? current.steps.filter((step) => step.local_id !== localId) : current.steps,
+    }));
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-black/24 p-4 backdrop-blur-sm"
@@ -1322,31 +1630,75 @@ function OutreachDripModal({
                 className="min-h-24 resize-none rounded-lg border border-white/65 bg-white/46 px-3 py-2.5 text-sm leading-6 text-black outline-none transition focus:border-[#5068e7] focus:bg-white/68"
               />
             </label>
-            <div className="rounded-lg border border-white/55 bg-white/36 p-3">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-black/48">First step</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <OutreachInput label="Step name" value={form.step_name} onChange={(value) => onFormChange((current) => ({ ...current, step_name: value }))} />
-                <OutreachSelect
-                  label="Channel"
-                  value={form.step_channel}
-                  onChange={(value) => onFormChange((current) => ({ ...current, step_channel: value as "email" | "push" }))}
-                  options={[["email", "Email"], ["push", "Push notification"]]}
-                />
+            <div className="border-t border-black/10 pt-3">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">Sequence steps</p>
+                  <p className="mt-1 text-xs font-medium leading-5 text-black/52">Default timing is relative to when the user joined.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addStep}
+                  className="inline-flex min-h-8 items-center gap-2 rounded-full border border-white/65 bg-white/54 px-3 text-xs font-semibold text-black transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(80,104,231,0.13)]"
+                >
+                  <Plus aria-hidden="true" size={14} strokeWidth={1.9} />
+                  Add step
+                </button>
               </div>
-              <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_90px_120px]">
-                <OutreachSelect
-                  label="Template"
-                  value={form.step_template_id}
-                  onChange={(value) => onFormChange((current) => ({ ...current, step_template_id: value }))}
-                  options={[["", "No template"], ...templates.map((template) => [String(template.id), template.name] as [string, string])]}
-                />
-                <OutreachInput label="Delay" value={form.delay_amount} onChange={(value) => onFormChange((current) => ({ ...current, delay_amount: value.replace(/\D/g, "") }))} />
-                <OutreachSelect
-                  label="Unit"
-                  value={form.delay_unit}
-                  onChange={(value) => onFormChange((current) => ({ ...current, delay_unit: value as OutreachDripForm["delay_unit"] }))}
-                  options={[["minutes", "Minutes"], ["hours", "Hours"], ["days", "Days"]]}
-                />
+              <div className="grid gap-3">
+                {form.steps.map((step, index) => {
+                  const stepTemplates = templates.filter((template) => template.channel === step.channel || String(template.id) === step.template_id);
+
+                  return (
+                    <div key={step.local_id} className="border-b border-black/10 pb-3 last:border-0 last:pb-0">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/44">Step {index + 1}</p>
+                        <button
+                          type="button"
+                          onClick={() => removeStep(step.local_id)}
+                          disabled={form.steps.length <= 1}
+                          aria-label={`Remove step ${index + 1}`}
+                          className="grid size-8 place-items-center rounded-full border border-white/65 bg-white/52 text-black/62 transition hover:-translate-y-0.5 hover:text-black hover:shadow-[0_12px_28px_rgba(0,0,0,0.12)] disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Trash2 aria-hidden="true" size={14} strokeWidth={1.9} />
+                        </button>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <OutreachInput label="Step name" value={step.name} onChange={(value) => updateStep(step.local_id, { name: value })} />
+                        <OutreachSelect
+                          label="Channel"
+                          value={step.channel}
+                          onChange={(value) => updateStep(step.local_id, {
+                            channel: value as "email" | "push",
+                            template_id: "",
+                          })}
+                          options={[["email", "Email"], ["push", "Push notification"]]}
+                        />
+                      </div>
+                      <div className="mt-2 grid gap-2 xl:grid-cols-[minmax(0,1fr)_150px_90px_120px]">
+                        <OutreachSelect
+                          label="Template"
+                          value={step.template_id}
+                          onChange={(value) => updateStep(step.local_id, { template_id: value })}
+                          options={[["", "No template"], ...stepTemplates.map((template) => [String(template.id), `${template.name} (${labelize(template.channel)})`] as [string, string])]}
+                        />
+                        <OutreachSelect
+                          label="Timing anchor"
+                          value={step.trigger_key}
+                          onChange={(value) => updateStep(step.local_id, { trigger_key: value })}
+                          options={dripTriggerOptions}
+                        />
+                        <OutreachInput label="Delay" value={step.delay_amount} onChange={(value) => updateStep(step.local_id, { delay_amount: value.replace(/\D/g, "") })} />
+                        <OutreachSelect
+                          label="Unit"
+                          value={step.delay_unit}
+                          onChange={(value) => updateStep(step.local_id, { delay_unit: value as OutreachDripFormStep["delay_unit"] })}
+                          options={[["minutes", "Minutes"], ["hours", "Hours"], ["days", "Days"]]}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1436,18 +1788,33 @@ function OutreachEmailView({
 
 function OutreachNotificationsView({
   dashboard,
+  onCreatePushTemplate,
   onInspect,
 }: {
   dashboard: GrowthDashboardData;
+  onCreatePushTemplate: () => void;
   onInspect: (detail: DetailView) => void;
 }) {
   return (
     <Panel title="Notifications" eyebrow="Push outreach" icon={Send}>
       <ScrollStack>
-        <p className="mb-2 rounded-lg border border-white/55 bg-white/34 px-3 py-2 text-xs font-medium text-black/56">
-          Notification volume is grouped from <span className="font-semibold text-black/72">notification_logs</span>, which is written by the existing Firebase notification jobs and Outreach push steps.
-        </p>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/55 bg-white/34 px-3 py-2">
+          <p className="min-w-0 text-xs font-medium text-black/56">
+            Notification volume is grouped from <span className="font-semibold text-black/72">notification_logs</span>, written by Firebase jobs and Outreach push steps.
+          </p>
+          <button
+            type="button"
+            onClick={onCreatePushTemplate}
+            className="inline-flex min-h-8 items-center gap-2 rounded-full bg-black px-3 text-xs font-semibold text-white shadow-[0_12px_28px_rgba(0,0,0,0.16)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(0,0,0,0.22)]"
+          >
+            <Send aria-hidden="true" size={14} strokeWidth={1.9} />
+            Create push template
+          </button>
+        </div>
         <TinyStat label="Total push records" value={formatNumber(dashboard.notifications.total)} />
+        <p className="rounded-lg border border-white/55 bg-white/34 px-3 py-2 text-xs font-medium leading-5 text-black/56">
+          This list only shows notification types with rows in <span className="font-semibold text-black/72">notification_logs</span>. Scheduled notification definitions need to be returned by the backend outreach endpoint before they can appear here.
+        </p>
         {dashboard.notifications.by_type.map((notification) => (
           <SignalRow
             key={notification.notification_type}
@@ -1564,7 +1931,7 @@ function ContentPage({
       <div className="min-h-0">
         <Panel title={titleCase(contentTab)} eyebrow="Recent content" icon={BookOpen}>
           <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
-            <div className="min-h-0 overflow-y-auto rounded-lg border border-white/50 bg-white/36 backdrop-blur-xl">
+            <div className="min-h-0 overflow-y-auto">
               {visibleRows.map((row, index) => (
                 <ContentRow
                   key={`${contentTab}-${row.id ?? index}`}
@@ -1671,9 +2038,9 @@ function SystemPage({
   readiness: GrowthReadiness;
 }) {
   const healthChecks = dashboard.health.checks
-    .filter((check) => !isLoopsVendorKey(check.key) && !isLoopsVendorKey(check.label))
+    .filter(isSupportedSystemHealthCheck)
     .map(normalizeSystemHealthCheck);
-  const readinessIntegrations = Object.entries(readiness.integrations).filter(([key]) => !isLoopsVendorKey(key));
+  const readinessIntegrations = Object.entries(readiness.integrations).filter(([key]) => isSupportedSystemIntegration(key));
 
   return (
     <div className="grid h-full min-h-0 gap-3 overflow-y-auto xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] xl:overflow-hidden">
@@ -1938,7 +2305,7 @@ function ChartBlock({
     </>
   );
 
-  const className = "grid h-full min-h-0 w-full grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-white/55 bg-white/42 p-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)]";
+  const className = "grid h-full min-h-0 w-full grid-rows-[auto_minmax(0,1fr)] gap-2 text-left transition duration-200 hover:opacity-85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#5068e7]";
 
   if (onClick) {
     return (
@@ -1993,10 +2360,10 @@ function LineChart({
   const path = points.map((point) => `${point.x},${point.y}`).join(" ");
   const area = `0,${chartHeight} ${path} ${chartWidth},${chartHeight}`;
   const activePoint = hoverIndex === null ? null : points[hoverIndex] ?? null;
-  const lineWidth = size === "large" ? 1.35 : 2;
-  const endpointRadius = size === "large" ? 1.8 : 3;
-  const hoverRadius = size === "large" ? 2.8 : 4.5;
-  const hoverStrokeWidth = size === "large" ? 1.4 : 2;
+  const lineWidth = size === "large" ? 1.15 : 1.7;
+  const endpointRadius = size === "large" ? 1.5 : 2.4;
+  const hoverRadius = size === "large" ? 2.4 : 3.4;
+  const hoverStrokeWidth = size === "large" ? 1.1 : 1.6;
 
   function handlePointerMove(event: React.PointerEvent<SVGSVGElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -2005,10 +2372,12 @@ function LineChart({
     setHoverIndex(Math.round(bounded * (points.length - 1)));
   }
 
-  const tooltipWidth = 118;
-  const tooltipHeight = 42;
+  const tooltipWidth = size === "large" ? 94 : 104;
+  const tooltipHeight = size === "large" ? 34 : 38;
   const tooltipX = activePoint ? Math.max(4, Math.min(chartWidth - tooltipWidth - 4, activePoint.x - tooltipWidth / 2)) : 0;
   const tooltipY = activePoint ? (activePoint.y > 56 ? activePoint.y - tooltipHeight - 10 : activePoint.y + 14) : 0;
+  const tooltipDateClass = size === "large" ? "fill-black/55 text-[7px] font-semibold uppercase" : "fill-black/55 text-[8px] font-semibold uppercase";
+  const tooltipValueClass = size === "large" ? "fill-black text-[10px] font-semibold" : "fill-black text-[11px] font-semibold";
 
   return (
     <svg
@@ -2040,14 +2409,14 @@ function LineChart({
       ))}
       {activePoint ? (
         <g className="pointer-events-none">
-          <line x1={activePoint.x} x2={activePoint.x} y1="8" y2={chartHeight - 8} stroke="rgba(0,0,0,0.18)" strokeDasharray="3 4" />
+          <line x1={activePoint.x} x2={activePoint.x} y1="8" y2={chartHeight - 8} stroke="rgba(0,0,0,0.14)" strokeDasharray="3 5" />
           <circle cx={activePoint.x} cy={activePoint.y} r={hoverRadius} fill="white" stroke={color} strokeWidth={hoverStrokeWidth} />
           <g transform={`translate(${tooltipX}, ${tooltipY})`}>
-            <rect width={tooltipWidth} height={tooltipHeight} rx="9" fill="rgba(255,255,255,0.92)" stroke="rgba(0,0,0,0.12)" />
-            <text x="10" y="17" className="fill-black/55 text-[10px] font-semibold uppercase">
+            <rect width={tooltipWidth} height={tooltipHeight} rx="7" fill="rgba(255,255,255,0.9)" stroke="rgba(0,0,0,0.10)" />
+            <text x="8" y={size === "large" ? "13" : "15"} className={tooltipDateClass}>
               {formatChartDate(activePoint.date)}
             </text>
-            <text x="10" y="33" className="fill-black text-[13px] font-semibold">
+            <text x="8" y={size === "large" ? "27" : "30"} className={tooltipValueClass}>
               {formatNumber(activePoint.count)}
             </text>
           </g>
@@ -2070,7 +2439,7 @@ function RetentionCurveCard({
     <button
       type="button"
       onClick={onClick}
-      className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-white/55 bg-white/42 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(80,104,231,0.14)]"
+      className="grid h-full min-h-[420px] w-full grid-rows-[auto_minmax(240px,1fr)_auto] gap-3 text-left transition duration-200 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#5068e7]"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
@@ -2080,7 +2449,57 @@ function RetentionCurveCard({
         <p className="shrink-0 text-sm font-semibold tabular-nums text-black">D30 {formatPercent(latestRate)}</p>
       </div>
       <RetentionCurveChart retention={retention} />
+      <RetentionSnapshotGrid retention={retention} />
     </button>
+  );
+}
+
+function RetentionSnapshotGrid({
+  retention,
+}: {
+  retention: GrowthDashboardData["summary"]["users"]["retention"];
+}) {
+  const rows = [
+    { key: "d1" as const, label: "D1", target: retentionTargets.d1, cohort: retention.d1 },
+    { key: "d7" as const, label: "D7", target: retentionTargets.d7, cohort: retention.d7 },
+    { key: "d30" as const, label: "D30", target: retentionTargets.d30, cohort: retention.d30 },
+  ];
+
+  return (
+    <div className="grid gap-4 border-t border-black/10 pt-3 sm:grid-cols-3">
+      {rows.map((row) => {
+        const rate = row.cohort?.rate ?? 0;
+        const delta = rate - row.target;
+        const scaleMax = Math.max(row.target * 1.5, rate, 1);
+        const barWidth = Math.min(100, (rate / scaleMax) * 100);
+        const targetLeft = Math.min(98, (row.target / scaleMax) * 100);
+
+        return (
+          <div key={row.key} className="min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-black/48">{row.label}</p>
+              <span className={["rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums", delta >= 0 ? "bg-[#f3fbf1] text-[#176e0f]" : "bg-[#fff9e8] text-[#96690f]"].join(" ")}>
+                {delta >= 0 ? "+" : ""}{formatPercent(delta)}
+              </span>
+            </div>
+            <div className="mt-2 flex items-end justify-between gap-2">
+              <p className="text-lg font-semibold tabular-nums text-black">{formatPercent(rate)}</p>
+              <p className="text-[11px] font-semibold text-[#9b710c]">Target {formatPercent(row.target)}</p>
+            </div>
+            <div className="relative mt-2 h-2 rounded-full bg-black/[0.08]">
+              <div
+                className="h-full rounded-full bg-black"
+                style={{ width: `${Math.max(rate > 0 ? 3 : 0, barWidth)}%` }}
+              />
+              <span
+                className="absolute top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-[#d29a13]"
+                style={{ left: `${targetLeft}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -2098,20 +2517,23 @@ function RetentionCurveChart({
     { key: "d30" as const, label: "D30", rate: retention.d30?.rate ?? 0, target: retentionTargets.d30 },
   ];
   const max = Math.max(30, ...rows.map((row) => row.rate), ...rows.map((row) => row.target));
-  const width = 320;
-  const height = 128;
+  const width = 360;
+  const height = 150;
+  const baseline = 122;
+  const topInset = 16;
+  const plotHeight = baseline - topInset;
   const points = rows.map((row, index) => ({
     ...row,
-    x: 28 + index * 132,
-    y: height - 28 - (row.rate / max) * 78,
-    targetY: height - 28 - (row.target / max) * 78,
+    x: 30 + index * 150,
+    y: baseline - (row.rate / max) * plotHeight,
+    targetY: baseline - (row.target / max) * plotHeight,
   }));
   const currentPath = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const currentArea = `28,100 ${currentPath} 292,100`;
+  const currentArea = `${points[0]?.x ?? 30},${baseline} ${currentPath} ${points[points.length - 1]?.x ?? 330},${baseline}`;
   const targetPath = points.map((point) => `${point.x},${point.targetY}`).join(" ");
   const activePoint = hoverIndex === null ? null : points[hoverIndex] ?? null;
 
-  function handlePointerMove(event: React.PointerEvent<SVGSVGElement>) {
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
     const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
     const bounded = Math.max(0, Math.min(1, ratio));
@@ -2119,74 +2541,90 @@ function RetentionCurveChart({
   }
 
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      className="h-full min-h-40 w-full"
-      role="img"
-      aria-label="Retention curve"
-      onPointerMove={handlePointerMove}
-      onPointerLeave={() => setHoverIndex(null)}
-    >
-      <defs>
-        <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#111111" stopOpacity="0.18" />
-          <stop offset="100%" stopColor="#111111" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <line x1="24" x2="296" y1="100" y2="100" stroke="rgba(0,0,0,0.10)" />
-      <polygon points={currentArea} fill={`url(#${gradientId})`} />
-      <polyline
-        points={targetPath}
-        fill="none"
-        stroke="#d29a13"
-        strokeDasharray="4 5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.4"
-        vectorEffect="non-scaling-stroke"
-      />
-      <polyline
-        points={currentPath}
-        fill="none"
-        stroke="#111111"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.5"
-        vectorEffect="non-scaling-stroke"
-      />
-      {points.map((point) => (
-        <g key={point.key}>
-          <circle cx={point.x} cy={point.y} r="2.6" fill="#111111" />
-          <circle cx={point.x} cy={point.targetY} r="2.2" fill="#d29a13" />
-          <text x={point.x} y={Math.max(14, point.y - 8)} textAnchor="middle" className="fill-black text-[9px] font-semibold">
-            {formatPercent(point.rate)}
-          </text>
-          <text x={point.x} y="119" textAnchor="middle" className="fill-black/50 text-[9px] font-semibold uppercase">
-            {point.label}
-          </text>
-        </g>
-      ))}
-      <g transform="translate(188, 10)">
-        <circle cx="0" cy="0" r="2.6" fill="#111111" />
-        <text x="7" y="3" className="fill-black/70 text-[8px] font-semibold uppercase">Current</text>
-        <circle cx="58" cy="0" r="2.4" fill="#d29a13" />
-        <text x="65" y="3" className="fill-[#9b710c] text-[8px] font-semibold uppercase">Target</text>
-      </g>
-      <text x="188" y="27" className="fill-[#9b710c] text-[8px] font-semibold">
-        D1 {retentionTargets.d1}% / D7 {retentionTargets.d7}% / D30 {retentionTargets.d30}%
-      </text>
-      {activePoint ? (
-        <g className="pointer-events-none">
-          <line x1={activePoint.x} x2={activePoint.x} y1="16" y2="101" stroke="rgba(0,0,0,0.16)" strokeDasharray="3 4" />
-          <g transform={`translate(${Math.max(6, Math.min(width - 114, activePoint.x - 52))}, ${activePoint.y > 58 ? activePoint.y - 45 : activePoint.y + 13})`}>
-            <rect width="108" height="38" rx="8" fill="rgba(255,255,255,0.94)" stroke="rgba(0,0,0,0.12)" />
-            <text x="9" y="15" className="fill-black/55 text-[8px] font-semibold uppercase">{activePoint.label} retention</text>
-            <text x="9" y="29" className="fill-black text-[10px] font-semibold">Now {formatPercent(activePoint.rate)}</text>
-            <text x="61" y="29" className="fill-[#9b710c] text-[10px] font-semibold">Target {formatPercent(activePoint.target)}</text>
-          </g>
-        </g>
-      ) : null}
-    </svg>
+    <div className="relative h-full min-h-[170px]">
+      <div className="absolute right-1 top-0 flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] font-semibold uppercase tracking-[0.08em]">
+        <span className="inline-flex items-center gap-1.5 text-black/62"><span className="size-2 rounded-full bg-black" />Current</span>
+        <span className="inline-flex items-center gap-1.5 text-[#9b710c]"><span className="size-2 rounded-full bg-[#d29a13]" />Target</span>
+        <span className="basis-full text-right text-[10px] tracking-normal text-[#9b710c]">
+          D1 {retentionTargets.d1}% / D7 {retentionTargets.d7}% / D30 {retentionTargets.d30}%
+        </span>
+      </div>
+      <div
+        className="absolute inset-x-0 bottom-7 top-7"
+        onPointerMove={handlePointerMove}
+        onPointerLeave={() => setHoverIndex(null)}
+      >
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className="h-full w-full"
+          role="img"
+          aria-label="Retention curve"
+          preserveAspectRatio="none"
+        >
+          <defs>
+            <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#111111" stopOpacity="0.16" />
+              <stop offset="100%" stopColor="#111111" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <line x1="24" x2="336" y1={baseline} y2={baseline} stroke="rgba(0,0,0,0.10)" />
+          <polygon points={currentArea} fill={`url(#${gradientId})`} />
+          <polyline
+            points={targetPath}
+            fill="none"
+            stroke="#d29a13"
+            strokeDasharray="4 7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.2"
+            vectorEffect="non-scaling-stroke"
+          />
+          <polyline
+            points={currentPath}
+            fill="none"
+            stroke="#111111"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.3"
+            vectorEffect="non-scaling-stroke"
+          />
+          {points.map((point) => (
+            <g key={point.key}>
+              <circle cx={point.x} cy={point.targetY} r="2.2" fill="#d29a13" />
+              <circle cx={point.x} cy={point.y} r="2.7" fill="#111111" />
+            </g>
+          ))}
+          {activePoint ? (
+            <g className="pointer-events-none">
+              <line x1={activePoint.x} x2={activePoint.x} y1="16" y2={baseline + 4} stroke="rgba(0,0,0,0.14)" strokeDasharray="3 5" />
+              <circle cx={activePoint.x} cy={activePoint.y} r="4" fill="white" stroke="#111111" strokeWidth="1.1" vectorEffect="non-scaling-stroke" />
+            </g>
+          ) : null}
+        </svg>
+        {activePoint ? (
+          <div
+            className="pointer-events-none absolute w-28 rounded-lg border border-black/10 bg-white/88 px-2.5 py-2 text-left shadow-[0_16px_44px_rgba(30,32,50,0.14)] backdrop-blur-xl"
+            style={{
+              left: `clamp(6px, calc(${(activePoint.x / width) * 100}% - 56px), calc(100% - 118px))`,
+              top: activePoint.y > height * 0.54
+                ? `clamp(4px, calc(${(activePoint.y / height) * 100}% - 52px), calc(100% - 54px))`
+                : `clamp(4px, calc(${(activePoint.y / height) * 100}% + 10px), calc(100% - 54px))`,
+            }}
+          >
+            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-black/48">{activePoint.label}</p>
+            <div className="mt-1 flex items-center justify-between gap-2 text-[11px] font-semibold">
+              <span className="text-black">{formatPercent(activePoint.rate)}</span>
+              <span className="text-[#9b710c]">{formatPercent(activePoint.target)}</span>
+            </div>
+          </div>
+        ) : null}
+      </div>
+      <div className="absolute inset-x-0 bottom-0 grid grid-cols-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-black/48">
+        {rows.map((row) => (
+          <span key={row.key} className="text-center">{row.label}</span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -2200,7 +2638,7 @@ function BarSet({
   const max = Math.max(...items.map((item) => item.value), 1);
 
   return (
-    <div className="grid h-full min-h-0 items-end gap-3 rounded-lg border border-white/55 bg-white/36 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl sm:grid-cols-4">
+    <div className="grid h-full min-h-0 items-end gap-4 sm:grid-cols-4">
       {items.map((item) => (
         <button
           key={item.label}
@@ -2212,9 +2650,9 @@ function BarSet({
           })}
           className="grid h-full min-h-40 grid-rows-[minmax(0,1fr)_auto] gap-2 text-left transition duration-200 hover:-translate-y-0.5"
         >
-          <div className="flex h-full items-end rounded-lg bg-white/52 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+          <div className="flex h-full items-end border-b border-black/10 bg-black/[0.04] px-1.5 pt-1.5">
             <div
-              className="w-full rounded-md"
+              className="w-full rounded-t"
               style={{ height: `${Math.max(4, (item.value / max) * 100)}%`, backgroundColor: item.color }}
             />
           </div>
@@ -2257,77 +2695,6 @@ function RingMeter({ value }: { value: number }) {
   );
 }
 
-function RetentionTargetGrid({
-  compact = false,
-  onInspect,
-  retention,
-}: {
-  compact?: boolean;
-  onInspect?: (label: string, cohort?: { cohort: number; retained: number; rate: number }) => void;
-  retention: GrowthDashboardData["summary"]["users"]["retention"];
-}) {
-  const items = [
-    { key: "d1", label: "D1 retention", target: retentionTargets.d1, cohort: retention.d1 },
-    { key: "d7", label: "D7 retention", target: retentionTargets.d7, cohort: retention.d7 },
-    { key: "d30", label: "D30 retention", target: retentionTargets.d30, cohort: retention.d30 },
-  ];
-
-  return (
-    <div className="grid gap-2">
-      <div className={compact ? "grid gap-2" : "grid gap-2 md:grid-cols-3"}>
-        {items.map((item) => {
-        const rate = item.cohort?.rate ?? 0;
-        const scaleMax = Math.max(item.target * 1.55, rate, 1);
-        const barWidth = Math.min(100, (rate / scaleMax) * 100);
-        const targetLeft = Math.min(98, (item.target / scaleMax) * 100);
-        const delta = rate - item.target;
-        const shortLabel = item.key.toUpperCase();
-
-        return (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => onInspect?.(item.label.toUpperCase().replace(" RETENTION", ""), item.cohort)}
-            className="rounded-lg border border-white/55 bg-white/42 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_50px_rgba(80,104,231,0.14)]"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-black/48">{compact ? item.label : shortLabel}</p>
-              <span className={["rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums", delta >= 0 ? "bg-[#f3fbf1] text-[#176e0f]" : "bg-[#fff9e8] text-[#96690f]"].join(" ")}>
-                {delta >= 0 ? "+" : ""}{formatPercent(delta)}
-              </span>
-            </div>
-            <div className="mt-2 flex items-end justify-between gap-3">
-              <p className="text-xl font-semibold tabular-nums text-black">{formatPercent(rate)}</p>
-              <p className="text-xs font-semibold text-[#9b710c]">Target {formatPercent(item.target)}</p>
-            </div>
-            <div className="relative mt-2 h-2.5 rounded-full bg-black/[0.08]">
-              <div
-                className="h-full rounded-full bg-[#5068e7]"
-                style={{ width: `${Math.max(rate > 0 ? 3 : 0, barWidth)}%` }}
-              />
-              <span
-                className="absolute top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-[#d29a13] shadow-[0_0_0_3px_rgba(210,154,19,0.15)]"
-                style={{ left: `${targetLeft}%` }}
-              />
-            </div>
-            {!compact ? (
-              <p className="mt-2 truncate text-xs text-black/52">
-                {formatNumber(item.cohort?.retained ?? 0)} retained / {formatNumber(item.cohort?.cohort ?? 0)} cohort
-              </p>
-            ) : null}
-          </button>
-        );
-        })}
-      </div>
-      {!compact ? (
-        <p className="text-[11px] font-medium text-black/46">
-          Targets are configured product benchmarks for this dashboard: D1 {retentionTargets.d1}%, D7 {retentionTargets.d7}%, D30 {retentionTargets.d30}%. Current cohort values are shown in black; target markers are gold.
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 function SignalList({
   empty,
   items,
@@ -2363,6 +2730,9 @@ function EmailStatusBars({
   onInspect?: (email: GrowthDashboardData["emails"]["by_type"][number]) => void;
 }) {
   const max = Math.max(...emails.map((email) => email.count), 1);
+  const skippedCount = emails
+    .filter((email) => email.status.toLowerCase() === "skipped")
+    .reduce((sum, email) => sum + email.count, 0);
 
   if (!emails.length) {
     return (
@@ -2377,12 +2747,17 @@ function EmailStatusBars({
 
   return (
     <div className="grid gap-2">
+      {skippedCount > 0 ? (
+        <p className="rounded-lg border border-[#f9bc2c]/35 bg-[#fff9e8]/72 px-3 py-2 text-xs font-medium leading-5 text-[#7a5a0b]">
+          {formatNumber(skippedCount)} emails are logged as skipped. They were recorded as not sent and are not counted as SendGrid failures; this backend response does not include the skip reason yet.
+        </p>
+      ) : null}
       {emails.map((email) => (
         <button
           key={`${email.email_type}-${email.status}`}
           type="button"
           onClick={() => onInspect?.(email)}
-          className="rounded-lg border border-white/55 bg-white/40 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition duration-200 hover:-translate-y-0.5 hover:bg-white/60 hover:shadow-[0_16px_42px_rgba(80,104,231,0.12)]"
+          className="border-b border-black/10 py-3 text-left transition duration-200 last:border-0 hover:translate-x-1"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -2415,9 +2790,9 @@ function EmailRecentStream({
 }) {
   return (
     <ScrollStack>
-      {emails.map((email) => (
+      {emails.map((email, index) => (
         <SignalRow
-          key={`${email.provider}-${email.email_type}-${email.created_at}`}
+          key={`${email.provider}-${email.email_type}-${email.status}-${email.recipient_domain ?? "domain"}-${email.created_at}-${index}`}
           title={labelize(email.email_type)}
           detail={`${labelize(email.provider)} / ${email.recipient_domain ?? "unknown domain"}`}
           value={labelize(email.status)}
@@ -2551,7 +2926,7 @@ function QuietState({
 
 function TinyStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/55 bg-white/42 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl">
+    <div className="min-w-0 border-b border-black/10 py-2">
       <p className="truncate text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{label}</p>
       <p className="mt-1 truncate text-lg font-semibold tabular-nums text-black">{value}</p>
     </div>
@@ -2682,7 +3057,7 @@ function DetailModal({ detail, onClose }: { detail: DetailView; onClose: () => v
           {detail.rows?.length ? (
             <div className={["grid gap-2", detail.chart ? "sm:grid-cols-4" : "sm:grid-cols-2 xl:grid-cols-3"].join(" ")}>
               {detail.rows.map((row) => (
-                <div key={`${row.label}-${String(row.value)}`} className="grid gap-1 rounded-lg border border-white/55 bg-white/42 p-3">
+                <div key={`${row.label}-${String(row.value)}`} className="grid gap-1 border-b border-black/10 py-2 last:border-0">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{row.label}</p>
                   <p className="min-w-0 break-words text-sm font-semibold text-black">{formatDetailValue(row.value)}</p>
                 </div>
@@ -2708,6 +3083,7 @@ function GrowthChatModal({
   onClose: () => void;
 }) {
   const [input, setInput] = useState("");
+  const [pending, setPending] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
@@ -2721,16 +3097,52 @@ function GrowthChatModal({
     "Which events are missing?",
   ];
 
-  function submitQuestion(question: string) {
+  async function submitQuestion(question: string) {
     const trimmed = question.trim();
-    if (!trimmed) return;
+    if (!trimmed || pending) return;
 
-    setMessages((current) => [
-      ...current,
-      { role: "user", text: trimmed },
-      { role: "assistant", text: growthAnswer(trimmed, dashboard) },
-    ]);
+    const nextHistory: ChatMessage[] = [...messages, { role: "user", text: trimmed }];
+    setMessages(nextHistory);
     setInput("");
+    setPending(true);
+
+    try {
+      const response = await fetch("/api/admin/growth/assistant", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          days: dashboard.period.days || 30,
+          history: nextHistory.slice(-8),
+          question: trimmed,
+        }),
+      });
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok || !body?.ok || !body?.data?.answer) {
+        throw new Error(body?.error ?? "Assistant answer could not be generated.");
+      }
+
+      setMessages((current) => [
+        ...current,
+        { role: "assistant", text: body.data.answer },
+      ]);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          role: "assistant",
+          text: error instanceof Error
+            ? `I could not generate an answer: ${error.message}`
+            : "I could not generate an answer.",
+        },
+      ]);
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -2774,6 +3186,11 @@ function GrowthChatModal({
                 {message.text}
               </div>
             ))}
+            {pending ? (
+              <div className="justify-self-start rounded-lg border border-white/60 bg-white/50 px-4 py-3 text-sm font-semibold text-black/54 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
+                Checking live dashboard...
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -2783,7 +3200,8 @@ function GrowthChatModal({
               <button
                 key={suggestion}
                 type="button"
-                onClick={() => submitQuestion(suggestion)}
+                onClick={() => void submitQuestion(suggestion)}
+                disabled={pending}
                 className="shrink-0 rounded-full border border-white/65 bg-white/45 px-3 py-2 text-xs font-semibold text-black transition hover:-translate-y-0.5 hover:bg-white/72 hover:shadow-[0_12px_30px_rgba(80,104,231,0.12)]"
               >
                 {suggestion}
@@ -2794,21 +3212,23 @@ function GrowthChatModal({
             className="flex gap-2"
             onSubmit={(event) => {
               event.preventDefault();
-              submitQuestion(input);
+              void submitQuestion(input);
             }}
           >
             <input
               value={input}
               onChange={(event) => setInput(event.target.value)}
+              disabled={pending}
               placeholder="Ask about retention, churn, email, events, or revenue..."
               className="min-h-11 min-w-0 flex-1 rounded-full border border-white/65 bg-white/58 px-4 text-sm text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition placeholder:text-black/35 focus:border-[#5068e7] focus:bg-white/78"
             />
             <button
               type="submit"
-              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)]"
+              disabled={pending || !input.trim()}
+              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-black px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_46px_rgba(0,0,0,0.24)] disabled:cursor-wait disabled:opacity-60"
             >
-              <Send aria-hidden="true" size={15} strokeWidth={1.9} />
-              Ask
+              {pending ? <RefreshCw aria-hidden="true" className="animate-spin" size={15} strokeWidth={1.9} /> : <Send aria-hidden="true" size={15} strokeWidth={1.9} />}
+              {pending ? "Asking" : "Ask"}
             </button>
           </form>
         </div>
@@ -2926,7 +3346,7 @@ function ContentEditorModal({
               {showMedia ? <MediaPreview row={editor.row} /> : null}
               <div className="grid content-start gap-2">
                 {rows.map((row) => (
-                  <div key={`${row.label}-${String(row.value)}`} className="grid gap-1 rounded-lg border border-white/55 bg-white/42 p-3 sm:grid-cols-[160px_minmax(0,1fr)]">
+                  <div key={`${row.label}-${String(row.value)}`} className="grid gap-1 border-b border-black/10 py-2 last:border-0 sm:grid-cols-[160px_minmax(0,1fr)]">
                     <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/48">{row.label}</p>
                     <p className="min-w-0 break-words text-sm font-semibold text-black">{formatDetailValue(row.value)}</p>
                   </div>
@@ -2945,10 +3365,33 @@ function MediaPreview({ row }: { row: GrowthContentRow }) {
   const rawVideo = row.video;
   const rawThumbnail = row.thumbnail ?? row.cover_image;
   const rawAudio = row.audio_link ?? row.audio_file ?? row.file;
+  const videoUrl = normalizeMediaUrl(preview.video_url) ?? normalizeMediaUrl(rawVideo);
+  const thumbnailUrl = normalizeMediaUrl(preview.thumbnail_url) ?? normalizeMediaUrl(rawThumbnail);
+  const audioUrl = normalizeMediaUrl(preview.audio_url) ?? normalizeMediaUrl(rawAudio);
+  const mediaKey = `${videoUrl ?? ""}|${thumbnailUrl ?? ""}|${audioUrl ?? ""}`;
+  const [failedState, setFailedState] = useState({
+    key: mediaKey,
+    video: false,
+    thumbnail: false,
+    audio: false,
+  });
+  const failed = failedState.key === mediaKey
+    ? failedState
+    : { key: mediaKey, video: false, thumbnail: false, audio: false };
 
-  if (!preview.video_url && !preview.thumbnail_url && !preview.audio_url && !rawVideo && !rawThumbnail && !rawAudio) {
+  function markFailed(kind: "video" | "thumbnail" | "audio") {
+    setFailedState((current) => {
+      const currentForMedia = current.key === mediaKey
+        ? current
+        : { key: mediaKey, video: false, thumbnail: false, audio: false };
+
+      return currentForMedia[kind] ? currentForMedia : { ...currentForMedia, [kind]: true };
+    });
+  }
+
+  if (!videoUrl && !thumbnailUrl && !audioUrl && !rawVideo && !rawThumbnail && !rawAudio) {
     return (
-      <div className="grid min-h-64 place-items-center rounded-lg border border-white/55 bg-white/34 p-5 text-center">
+      <div className="grid min-h-64 place-items-center border-y border-black/10 p-5 text-center">
         <div>
           <Eye aria-hidden="true" className="mx-auto text-black/38" size={26} />
           <p className="mt-3 text-sm font-semibold text-black/58">No media preview</p>
@@ -2958,27 +3401,43 @@ function MediaPreview({ row }: { row: GrowthContentRow }) {
   }
 
   return (
-    <div className="grid content-start gap-3 rounded-lg border border-white/55 bg-white/34 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
-      {preview.video_url ? (
-        <div className="overflow-hidden rounded-lg border border-black/10 bg-black">
-          <video src={preview.video_url} controls preload="metadata" className="aspect-video w-full bg-black object-contain" />
+    <div className="grid content-start gap-3">
+      {videoUrl && !failed.video ? (
+        <div className="overflow-hidden bg-black">
+          <video
+            src={videoUrl}
+            controls
+            preload="metadata"
+            onError={() => markFailed("video")}
+            className="aspect-video w-full bg-black object-contain"
+          />
         </div>
       ) : null}
-      {preview.thumbnail_url ? (
-        <div className="overflow-hidden rounded-lg border border-black/10 bg-white">
+      {thumbnailUrl && !failed.thumbnail ? (
+        <div className="overflow-hidden bg-white">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={preview.thumbnail_url} alt="" className="max-h-72 w-full object-contain" />
+          <img
+            src={thumbnailUrl}
+            alt=""
+            onError={() => markFailed("thumbnail")}
+            className="max-h-72 w-full object-contain"
+          />
         </div>
       ) : null}
-      {preview.audio_url ? (
-        <div className="rounded-lg border border-black/10 bg-white/58 p-3">
-          <audio src={preview.audio_url} controls className="w-full" />
+      {audioUrl && !failed.audio ? (
+        <div className="border-y border-black/10 py-3">
+          <audio src={audioUrl} controls onError={() => markFailed("audio")} className="w-full" />
         </div>
+      ) : null}
+      {failed.video || failed.thumbnail || failed.audio ? (
+        <p className="border-b border-black/10 pb-2 text-xs font-medium leading-5 text-[#96690f]">
+          Some media could not render inline. Use the direct links below to open the source asset.
+        </p>
       ) : null}
       <div className="grid gap-2">
-        {preview.video_url ? <MediaLink icon={PlayCircle} label="Video" url={preview.video_url} /> : null}
-        {preview.thumbnail_url ? <MediaLink icon={ImageIcon} label="Thumbnail" url={preview.thumbnail_url} /> : null}
-        {preview.audio_url ? <MediaLink icon={Music} label="Audio" url={preview.audio_url} /> : null}
+        {videoUrl ? <MediaLink icon={PlayCircle} label="Video" url={videoUrl} /> : null}
+        {thumbnailUrl ? <MediaLink icon={ImageIcon} label="Thumbnail" url={thumbnailUrl} /> : null}
+        {audioUrl ? <MediaLink icon={Music} label="Audio" url={audioUrl} /> : null}
       </div>
     </div>
   );
@@ -2999,6 +3458,26 @@ function MediaLink({ icon: Icon, label, url }: { icon: LucideIcon; label: string
       <ExternalLink aria-hidden="true" size={14} className="shrink-0 text-black/48" />
     </a>
   );
+}
+
+function normalizeMediaUrl(value?: string | null) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return encodeURI(trimmed);
+  }
+
+  if (trimmed.startsWith("//")) {
+    return `https:${encodeURI(trimmed)}`;
+  }
+
+  if (trimmed.startsWith("/")) {
+    return encodeURI(trimmed);
+  }
+
+  return null;
 }
 
 function ContentEditFields({ row, type }: { row: GrowthContentRow; type: ContentKey }) {
@@ -3108,6 +3587,11 @@ function emptyTemplateForm(): OutreachTemplateForm {
     subject: "",
     preview_text: "",
     body: "",
+    external_provider: "",
+    external_template_id: "",
+    external_generation: "",
+    external_updated_at: "",
+    external_metadata: null,
   };
 }
 
@@ -3121,10 +3605,17 @@ function templateFormFromTemplate(template: GrowthOutreachTemplate): OutreachTem
     subject: template.subject ?? "",
     preview_text: template.preview_text ?? "",
     body: template.body ?? "",
+    external_provider: template.external_provider === "sendgrid" ? "sendgrid" : "",
+    external_template_id: template.external_template_id ?? "",
+    external_generation: template.external_generation ?? "",
+    external_updated_at: template.external_updated_at ?? "",
+    external_metadata: template.external_metadata ?? null,
   };
 }
 
 function templatePayloadFromForm(form: OutreachTemplateForm): Partial<GrowthOutreachTemplate> {
+  const externalProvider = form.external_provider || null;
+
   return {
     name: form.name.trim(),
     channel: form.channel,
@@ -3134,6 +3625,34 @@ function templatePayloadFromForm(form: OutreachTemplateForm): Partial<GrowthOutr
     preview_text: form.preview_text.trim() || null,
     body: form.body,
     variables: extractTemplateVariables(`${form.subject}\n${form.preview_text}\n${form.body}`),
+    external_provider: externalProvider,
+    external_template_id: externalProvider === "sendgrid" ? form.external_template_id.trim() || null : null,
+    external_generation: externalProvider === "sendgrid" ? form.external_generation.trim() || null : null,
+    external_updated_at: externalProvider === "sendgrid" ? form.external_updated_at || null : null,
+    external_metadata: externalProvider === "sendgrid" ? form.external_metadata ?? null : null,
+  };
+}
+
+function templatePayloadFromSendGrid(template: GrowthSendGridTemplate): Partial<GrowthOutreachTemplate> {
+  const subject = template.active_version?.subject ?? "";
+
+  return {
+    name: template.name,
+    channel: "email",
+    category: "sendgrid",
+    status: "draft",
+    subject: subject || null,
+    preview_text: null,
+    body: subject ? `Linked SendGrid dynamic template: ${subject}` : "Linked SendGrid dynamic template.",
+    variables: [],
+    external_provider: "sendgrid",
+    external_template_id: template.id,
+    external_generation: template.generation ?? "dynamic",
+    external_updated_at: template.updated_at ?? null,
+    external_metadata: {
+      active_version: template.active_version ?? null,
+      imported_from: "sendgrid_transactional_templates",
+    },
   };
 }
 
@@ -3144,17 +3663,11 @@ function emptyDripForm(): OutreachDripForm {
     audience_key: "",
     goal: "",
     description: "",
-    step_name: "First touch",
-    step_channel: "email",
-    step_template_id: "",
-    delay_amount: "0",
-    delay_unit: "hours",
+    steps: [emptyDripStep(1)],
   };
 }
 
 function dripFormFromDrip(drip: GrowthOutreachDrip): OutreachDripForm {
-  const step = drip.steps?.[0];
-
   return {
     id: drip.id,
     name: drip.name ?? "",
@@ -3162,17 +3675,28 @@ function dripFormFromDrip(drip: GrowthOutreachDrip): OutreachDripForm {
     audience_key: drip.audience_key ?? "",
     goal: drip.goal ?? "",
     description: drip.description ?? "",
-    step_name: step?.name ?? "First touch",
-    step_channel: step?.channel === "push" ? "push" : "email",
-    step_template_id: step?.template_id ? String(step.template_id) : "",
-    delay_amount: String(step?.delay_amount ?? 0),
-    delay_unit: step?.delay_unit === "minutes" || step?.delay_unit === "days" ? step.delay_unit : "hours",
+    steps: drip.steps?.length
+      ? drip.steps.map((step, index) => dripFormStepFromStep(step, index))
+      : [emptyDripStep(1)],
   };
 }
 
 function dripPayloadFromForm(form: OutreachDripForm): Partial<GrowthOutreachDrip> {
-  const delayAmount = Number(form.delay_amount || 0);
-  const hasStep = Boolean(form.step_name.trim() || form.step_template_id);
+  const steps = form.steps
+    .filter((step) => step.name.trim() || step.template_id)
+    .map((step) => {
+      const delayAmount = Number(step.delay_amount || 0);
+      return {
+        ...(step.id ? { id: step.id } : {}),
+        name: step.name.trim() || "Untitled step",
+        channel: step.channel,
+        template_id: step.template_id ? Number(step.template_id) : null,
+        trigger_key: step.trigger_key || "user_joined",
+        delay_amount: Number.isFinite(delayAmount) ? delayAmount : 0,
+        delay_unit: step.delay_unit,
+        status: step.status,
+      } satisfies GrowthOutreachStep;
+    });
 
   return {
     name: form.name.trim(),
@@ -3181,21 +3705,37 @@ function dripPayloadFromForm(form: OutreachDripForm): Partial<GrowthOutreachDrip
     goal: form.goal.trim() || null,
     description: form.description.trim() || null,
     channel_mix: {
-      email: form.step_channel === "email" ? 1 : 0,
-      push: form.step_channel === "push" ? 1 : 0,
+      email: steps.filter((step) => step.channel === "email").length,
+      push: steps.filter((step) => step.channel === "push").length,
     },
-    steps: hasStep
-      ? [
-          {
-            name: form.step_name.trim() || "First touch",
-            channel: form.step_channel,
-            template_id: form.step_template_id ? Number(form.step_template_id) : null,
-            delay_amount: Number.isFinite(delayAmount) ? delayAmount : 0,
-            delay_unit: form.delay_unit,
-            status: "active",
-          },
-        ]
-      : [],
+    steps,
+  };
+}
+
+function emptyDripStep(position: number): OutreachDripFormStep {
+  return {
+    local_id: `new-step-${position}`,
+    name: position === 1 ? "First touch" : `Step ${position}`,
+    channel: "email",
+    template_id: "",
+    trigger_key: "user_joined",
+    delay_amount: position === 1 ? "0" : String(position),
+    delay_unit: position === 1 ? "hours" : "days",
+    status: "active",
+  };
+}
+
+function dripFormStepFromStep(step: GrowthOutreachStep, index: number): OutreachDripFormStep {
+  return {
+    id: step.id,
+    local_id: step.id ? `step-${step.id}` : `step-${index + 1}`,
+    name: step.name ?? `Step ${index + 1}`,
+    channel: step.channel === "push" ? "push" : "email",
+    template_id: step.template_id ? String(step.template_id) : "",
+    trigger_key: step.trigger_key || "user_joined",
+    delay_amount: String(step.delay_amount ?? 0),
+    delay_unit: step.delay_unit === "minutes" || step.delay_unit === "days" ? step.delay_unit : "hours",
+    status: step.status === "paused" ? "paused" : "active",
   };
 }
 
@@ -3205,6 +3745,26 @@ function extractTemplateVariables(text: string) {
     variables.add(match[1]);
   }
   return Array.from(variables);
+}
+
+function dedupeRecentEvents(events: GrowthDashboardData["events"]["recent"]) {
+  const seen = new Set<string>();
+
+  return events.filter((event) => {
+    const key = recentEventKey(event);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function recentEventKey(event: GrowthDashboardData["events"]["recent"][number]) {
+  return [
+    event.event_name,
+    event.source,
+    event.user_id ?? "anonymous",
+    event.created_at,
+  ].join("|");
 }
 
 function trendSummaryRows(data: GrowthTrendPoint[]) {
@@ -3251,68 +3811,6 @@ function growthOpeningMessage(dashboard: GrowthDashboardData) {
   ].join("\n\n");
 }
 
-function growthAnswer(question: string, dashboard: GrowthDashboardData) {
-  const normalized = question.toLowerCase();
-  const users = dashboard.summary.users;
-  const retention = users.retention;
-  const topTodo = dashboard.health.todos[0];
-  const missingEvents = dashboard.events.coverage.missing;
-  const activeUsers = funnelCount(dashboard, ["active_users"], ["active"]);
-  const purchases = funnelCount(dashboard, ["purchases"], ["purchase"]);
-
-  if (normalized.includes("retention") || normalized.includes("churn") || normalized.includes("return")) {
-    return [
-      `Retention is below target: D1 is ${formatPercent(retention.d1?.rate ?? 0)} vs ${retentionTargets.d1}%, D7 is ${formatPercent(retention.d7?.rate ?? 0)} vs ${retentionTargets.d7}%, and D30 is ${formatPercent(retention.d30?.rate ?? 0)} vs ${retentionTargets.d30}%. Those targets are dashboard benchmarks, not computed from this cohort.`,
-      "Near-term fix: instrument the missing onboarding/paywall events, then run one onboarding and one lifecycle experiment at a time so we can connect activation behavior to retention movement.",
-      `Active 7d users are ${formatNumber(users.active_7d)} out of ${formatNumber(users.total)} total users.`,
-    ].join("\n\n");
-  }
-
-  if (normalized.includes("email") || normalized.includes("sendgrid") || normalized.includes("outreach") || normalized.includes("spam")) {
-    return [
-      `Email volume is ${formatNumber(dashboard.emails.total)} with a recorded failure rate of ${dashboard.emails.failure_rate}%.`,
-      dashboard.readiness?.integrations.sendgrid_api_key ? "SendGrid is configured." : "SendGrid is not marked configured.",
-      dashboard.readiness?.integrations.growth_automation_enabled
-        ? "The growth scheduler is enabled for Outreach drips."
-        : "The growth scheduler is not enabled, so active drips will not send yet.",
-      "For spam specifically, the dashboard can show send/failure records, but inbox placement still depends on SendGrid domain authentication and provider-level deliverability signals.",
-    ].join("\n\n");
-  }
-
-  if (normalized.includes("event") || normalized.includes("tracking") || normalized.includes("instrument")) {
-    return [
-      `Event coverage is ${dashboard.events.coverage.percent}% (${dashboard.events.coverage.tracked}/${dashboard.events.coverage.expected}).`,
-      missingEvents.length
-        ? `Missing events: ${missingEvents.slice(0, 8).join(", ")}${missingEvents.length > 8 ? ", ..." : ""}.`
-        : "All expected events appeared in this period.",
-      "If these flows exist in the app, ship or verify iOS instrumentation first; without that, retention and conversion analysis will stay blurry.",
-    ].join("\n\n");
-  }
-
-  if (normalized.includes("revenue") || normalized.includes("subscription") || normalized.includes("conversion") || normalized.includes("paywall")) {
-    return [
-      `Active subscriptions are ${formatNumber(dashboard.summary.subscriptions.active ?? 0)} with ${formatNumber(dashboard.summary.subscriptions.new_purchases ?? 0)} purchases in this window.`,
-      `The funnel currently shows ${formatNumber(activeUsers)} active users and ${formatNumber(purchases)} purchases.`,
-      "The next revenue fix is to complete paywall and purchase event coverage so trial starts, plan selections, purchase attempts, and completions can be compared cleanly.",
-    ].join("\n\n");
-  }
-
-  return [
-    `The most pressing dashboard signal is: ${topTodo ? `${topTodo.title}. ${topTodo.action}` : "no urgent operator task in this period."}`,
-    `Health score is ${dashboard.health.score}, event coverage is ${dashboard.events.coverage.percent}%, and D7 retention is ${formatPercent(retention.d7?.rate ?? 0)}.`,
-    "I would fix instrumentation and lifecycle setup first, then use the retention and funnel charts to choose one activation experiment and one email experiment.",
-  ].join("\n\n");
-}
-
-function funnelCount(dashboard: GrowthDashboardData, keys: string[], labelTerms: string[]) {
-  const match = dashboard.funnel.find((item) => {
-    const label = item.label.toLowerCase();
-    return keys.includes(item.key) || labelTerms.some((term) => label.includes(term));
-  });
-
-  return match?.count ?? 0;
-}
-
 function retentionDetail(label: string, cohort?: { cohort: number; retained: number; rate: number }): DetailView {
   return {
     eyebrow: "Retention cohort",
@@ -3325,10 +3823,6 @@ function retentionDetail(label: string, cohort?: { cohort: number; retained: num
   };
 }
 
-function isLoopsVendorKey(value: string) {
-  return value.toLowerCase().includes("loops");
-}
-
 function normalizeSystemHealthCheck(check: GrowthHealthCheck): GrowthHealthCheck {
   if (check.key === "sendgrid") {
     return {
@@ -3339,6 +3833,26 @@ function normalizeSystemHealthCheck(check: GrowthHealthCheck): GrowthHealthCheck
   }
 
   return check;
+}
+
+function isSupportedSystemHealthCheck(check: GrowthHealthCheck) {
+  return new Set([
+    "first_party_events",
+    "push",
+    "revenuecat",
+    "sendgrid",
+    "setup",
+  ]).has(check.key);
+}
+
+function isSupportedSystemIntegration(key: string) {
+  return new Set([
+    "dashboard_key",
+    "growth_automation_enabled",
+    "rudderstack_data_plane_url",
+    "rudderstack_write_key",
+    "sendgrid_api_key",
+  ]).has(key);
 }
 
 function contentTitle(contentType: ContentKey, row: GrowthContentRow) {

@@ -23,6 +23,8 @@ export default async function BlogPage() {
   const posts = await getAllPosts();
   const categories = await getAllCategories();
   const featured = posts[0];
+  const featuredImage = featured?.featuredImage;
+  const featuredHasImage = Boolean(featuredImage);
 
   return (
     <div className="flex min-h-screen flex-col bg-white text-black">
@@ -83,14 +85,14 @@ export default async function BlogPage() {
               href={`/blog/${featured.slug}`}
               className={[
                 "group grid overflow-hidden rounded-[18px] border border-black/10 bg-white transition hover:-translate-y-0.5 hover:shadow-[0_24px_90px_rgba(0,0,0,0.10)]",
-                featured.featuredImage
+                featuredHasImage
                   ? "lg:grid-cols-[0.92fr_1.08fr]"
-                  : "",
+                  : "lg:max-w-3xl",
               ]
                 .filter(Boolean)
                 .join(" ")}
             >
-              {featured.featuredImage ? (
+              {featuredImage ? (
                 <div className="relative min-h-[320px] border-b border-black/10 bg-[#f8f6ef] lg:border-b-0 lg:border-r">
                   <Image
                     src="/images/generated/brand-atmosphere-editorial.png"
@@ -101,7 +103,7 @@ export default async function BlogPage() {
                     sizes="(min-width: 1024px) 46vw, 100vw"
                   />
                   <BlogImage
-                    src={featured.featuredImage}
+                    src={featuredImage}
                     alt={featured.featuredImageAlt ?? ""}
                     fill
                     className="object-contain p-8"
@@ -114,10 +116,20 @@ export default async function BlogPage() {
                 <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted">
                   Featured / {featured.readingTime}
                 </p>
-                <h2 className="editorial mt-4 max-w-xl text-3xl font-semibold leading-[1.08] text-black sm:text-4xl">
+                <h2
+                  className={[
+                    "editorial mt-4 text-3xl font-semibold leading-[1.08] text-black sm:text-4xl",
+                    featuredHasImage ? "max-w-xl" : "max-w-2xl",
+                  ].join(" ")}
+                >
                   {featured.title}
                 </h2>
-                <p className="mt-5 max-w-lg text-base leading-7 text-muted">
+                <p
+                  className={[
+                    "mt-5 text-base leading-7 text-muted",
+                    featuredHasImage ? "max-w-lg" : "max-w-2xl",
+                  ].join(" ")}
+                >
                   {featured.description}
                 </p>
                 <div className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-black">

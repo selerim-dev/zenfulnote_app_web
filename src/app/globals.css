@@ -86,8 +86,7 @@ button:focus-visible {
     680px auto;
 }
 
-.atmosphere-media img,
-.feature-stage > img {
+.atmosphere-media img {
   animation: atmosphere-drift 22s ease-in-out infinite;
   transform-origin: center;
   will-change: transform;
@@ -104,21 +103,121 @@ button:focus-visible {
   will-change: transform;
 }
 
-.hero-phone img {
-  animation: screenshot-drift 13s ease-in-out infinite;
+.actual-app-phone {
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+
+.hero-copy-reveal {
+  --reveal-from-transform: translate3d(-24px, 20px, 0);
+}
+
+.product-deck-stage {
+  --reveal-delay: 100ms;
+  --reveal-from-transform: translate3d(42px, 30px, 0) scale(0.96);
+}
+
+.proof-ribbon {
+  --reveal-from-transform: translate3d(0, 26px, 0) scale(0.985);
+}
+
+.proof-tab-reveal {
+  --reveal-from-transform: translate3d(0, 18px, 0);
+}
+
+.phone-motion-left {
+  --reveal-from-transform: translate3d(-74px, 78px, 0) rotate(-10deg)
+    scale(0.7);
+  --reveal-opacity: 0.82;
+  --reveal-transform-visible: rotate(-5deg) scale(0.82);
+}
+
+.phone-motion-center {
+  --reveal-from-transform: translate3d(0, 96px, 0) scale(0.84);
+  --reveal-transform-visible: scale(1);
+}
+
+.phone-motion-right {
+  --reveal-from-transform: translate3d(74px, 88px, 0) rotate(11deg)
+    scale(0.68);
+  --reveal-opacity: 0.74;
+  --reveal-transform-visible: rotate(5deg) scale(0.78);
+}
+
+.motion-orb {
+  animation: orb-drift 12s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.motion-orb-delay {
+  animation-delay: -4s;
+}
+
+.orbit-line {
+  animation: orbit-drift 24s linear infinite;
   transform-origin: center;
 }
 
-.reveal-on-scroll {
-  animation: reveal-up both;
-  animation-timeline: view();
-  animation-range: entry 12% cover 34%;
+.orbit-line-delay {
+  animation-duration: 30s;
+  animation-direction: reverse;
 }
 
 .pop-on-scroll {
-  animation: pop-line both;
-  animation-timeline: view();
-  animation-range: entry 8% cover 22%;
+  --reveal-from-transform: translate3d(0, 20px, 0) scale(0.985);
+}
+
+.reveal-on-scroll {
+  --reveal-from-transform: translate3d(0, 46px, 0) scale(0.985);
+}
+
+[data-scroll-reveal] {
+  --reveal-from-transform: translate3d(0, 28px, 0);
+}
+
+[data-scroll-reveal="visual"] {
+  --reveal-from-transform: translate3d(28px, 34px, 0) scale(0.97);
+}
+
+.scroll-reveal-ready .hero-copy-reveal,
+.scroll-reveal-ready .product-deck-stage,
+.scroll-reveal-ready .actual-app-phone,
+.scroll-reveal-ready .proof-ribbon,
+.scroll-reveal-ready .proof-tab-reveal,
+.scroll-reveal-ready .reveal-on-scroll,
+.scroll-reveal-ready .pop-on-scroll,
+.scroll-reveal-ready .review-carousel article,
+.scroll-reveal-ready [data-scroll-reveal],
+.scroll-reveal-ready .scroll-reveal-target {
+  opacity: 0;
+  transform: var(--reveal-from-transform, translate3d(0, 28px, 0));
+  transition:
+    opacity 760ms cubic-bezier(0.2, 0.78, 0.18, 1),
+    transform 900ms cubic-bezier(0.2, 0.78, 0.18, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+.scroll-reveal-ready .hero-copy-reveal.is-visible,
+.scroll-reveal-ready .product-deck-stage.is-visible,
+.scroll-reveal-ready .actual-app-phone.is-visible,
+.scroll-reveal-ready .proof-ribbon.is-visible,
+.scroll-reveal-ready .proof-tab-reveal.is-visible,
+.scroll-reveal-ready .reveal-on-scroll.is-visible,
+.scroll-reveal-ready .pop-on-scroll.is-visible,
+.scroll-reveal-ready .review-carousel article.is-visible,
+.scroll-reveal-ready [data-scroll-reveal].is-visible,
+.scroll-reveal-ready .scroll-reveal-target.is-visible {
+  opacity: var(--reveal-opacity, 1);
+  transform: var(--reveal-transform-visible, translate3d(0, 0, 0));
+}
+
+.review-carousel {
+  scrollbar-width: none;
+}
+
+.review-carousel::-webkit-scrollbar {
+  display: none;
 }
 
 @keyframes float-screen {
@@ -132,14 +231,23 @@ button:focus-visible {
   }
 }
 
-@keyframes screenshot-drift {
-  0%,
-  100% {
-    transform: scale(1);
+@keyframes orb-drift {
+  from {
+    transform: translate3d(-8px, 10px, 0) scale(0.96);
   }
 
-  50% {
-    transform: scale(1.035);
+  to {
+    transform: translate3d(14px, -12px, 0) scale(1.05);
+  }
+}
+
+@keyframes orbit-drift {
+  from {
+    transform: rotate(0deg) scale(1);
+  }
+
+  to {
+    transform: rotate(360deg) scale(1.015);
   }
 }
 
@@ -151,39 +259,6 @@ button:focus-visible {
 
   50% {
     transform: scale(1.08) translate3d(-10px, 8px, 0);
-  }
-}
-
-@keyframes reveal-up {
-  from {
-    opacity: 0.28;
-    transform: translateY(32px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes pop-line {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@supports not (animation-timeline: view()) {
-  .reveal-on-scroll,
-  .pop-on-scroll {
-    animation: none;
-    opacity: 1;
-    transform: none;
   }
 }
 

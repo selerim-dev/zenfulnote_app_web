@@ -4,6 +4,9 @@ export const BACKEND_URL_ENV = "ZENFULNOTE_BACKEND_URL";
 export const GROWTH_DASHBOARD_KEY_ENV = "ZENFULNOTE_GROWTH_DASHBOARD_KEY";
 export const BACKEND_URL_FALLBACK_ENV = "ZENFULNOTE_API_BASE_URL";
 export const GROWTH_DASHBOARD_KEY_FALLBACK_ENV = "GROWTH_DASHBOARD_API_KEY";
+export const SENDGRID_API_KEY_ENV = "SENDGRID_API_KEY";
+
+const GROWTH_FETCH_TIMEOUT_MS = 25_000;
 
 export type GrowthDashboardData = {
   generated_at: string;
@@ -196,9 +199,29 @@ export type GrowthOutreachTemplate = {
   preview_text?: string | null;
   body?: string | null;
   variables?: string[] | Record<string, unknown> | null;
+  external_provider?: string | null;
+  external_template_id?: string | null;
+  external_generation?: string | null;
+  external_updated_at?: string | null;
+  external_metadata?: Record<string, unknown> | null;
   ai_metadata?: Record<string, unknown> | null;
   created_at?: string | null;
   updated_at?: string | null;
+};
+
+export type GrowthSendGridTemplate = {
+  id: string;
+  name: string;
+  generation?: string | null;
+  updated_at?: string | null;
+  linked_template_id?: number | null;
+  active_version?: {
+    id?: string | null;
+    name?: string | null;
+    subject?: string | null;
+    thumbnail_url?: string | null;
+    updated_at?: string | null;
+  } | null;
 };
 
 export type GrowthOutreachStep = {
@@ -284,7 +307,7 @@ export async function getGrowthDashboard(days = 30): Promise<GrowthDashboardResu
   const endpoint = growthEndpoint(`/api/internal/growth/dashboard?days=${days}`);
 
   try {
-    const response = await fetch(endpoint, {
+    const response = await fetchWithTimeout(endpoint, {
       cache: "no-store",
       headers: {
         "X-Growth-Dashboard-Key": key,
@@ -320,7 +343,7 @@ export async function runGrowthLifecycleDryRun() {
     return { ok: false, error: `${GROWTH_DASHBOARD_KEY_ENV} is not configured.` };
   }
 
-  const response = await fetch(growthEndpoint("/api/internal/growth/run-lifecycle"), {
+  const response = await fetchWithTimeout(growthEndpoint("/api/internal/growth/run-lifecycle"), {
     method: "POST",
     cache: "no-store",
     headers: {
@@ -345,7 +368,7 @@ export async function getGrowthContent(type: string, id: string) {
     return { ok: false, error: `${GROWTH_DASHBOARD_KEY_ENV} is not configured.` };
   }
 
-  const response = await fetch(growthEndpoint(`/api/internal/growth/content/${type}/${id}`), {
+  const response = await fetchWithTimeout(growthEndpoint(`/api/internal/growth/content/${type}/${id}`), {
     cache: "no-store",
     headers: {
       "X-Growth-Dashboard-Key": key,
@@ -367,7 +390,7 @@ export async function updateGrowthContent(type: string, id: string, formData: Fo
     return { ok: false, error: `${GROWTH_DASHBOARD_KEY_ENV} is not configured.` };
   }
 
-  const response = await fetch(growthEndpoint(`/api/internal/growth/content/${type}/${id}`), {
+  const response = await fetchWithTimeout(growthEndpoint(`/api/internal/growth/content/${type}/${id}`), {
     method: "POST",
     cache: "no-store",
     headers: {
@@ -391,7 +414,7 @@ export async function getGrowthOutreach(): Promise<GrowthOutreachResult> {
     return { ok: false, error: `${GROWTH_DASHBOARD_KEY_ENV} is not configured.` };
   }
 
-  const response = await fetch(growthEndpoint("/api/internal/growth/outreach"), {
+  const response = await fetchWithTimeout(growthEndpoint("/api/internal/growth/outreach"), {
     cache: "no-store",
     headers: {
       "X-Growth-Dashboard-Key": key,
@@ -405,6 +428,40 @@ export async function getGrowthOutreach(): Promise<GrowthOutreachResult> {
   }
 
   return { ok: true, data: body.data as GrowthOutreachData };
+}
+
+export async function getSendGridTemplates() {
+  const key = growthDashboardKey();
+  let backendError = "";
+
+  if (key) {
+    const response = await fetchWithTimeout(growthEndpoint("/api/internal/growth/outreach/sendgrid-templates"), {
+      cache: "no-store",
+      headers: {
+        "X-Growth-Dashboard-Key": key,
+        Accept: "application/json",
+      },
+    });
+
+    const body = await response.json().catch(() => null);
+    if (response.ok && body?.data?.templates) {
+      return { ok: true, data: body.data.templates as GrowthSendGridTemplate[] };
+    }
+
+    backendError = body?.message || `Laravel SendGrid template endpoint returned ${response.status}.`;
+  } else {
+    backendError = `${GROWTH_DASHBOARD_KEY_ENV} is not configured.`;
+  }
+
+  const directResult = await getSendGridTemplatesDirectly();
+  if (directResult.ok) {
+    return directResult;
+  }
+
+  return {
+    ok: false,
+    error: `${backendError} ${directResult.error}`,
+  };
 }
 
 export async function saveGrowthOutreachTemplate(
@@ -433,7 +490,7 @@ async function saveGrowthOutreachResource<T>(pathname: string, payload: unknown)
     return { ok: false, error: `${GROWTH_DASHBOARD_KEY_ENV} is not configured.` };
   }
 
-  const response = await fetch(growthEndpoint(pathname), {
+  const response = await fetchWithTimeout(growthEndpoint(pathname), {
     method: "POST",
     cache: "no-store",
     headers: {
@@ -467,6 +524,121 @@ export function growthDashboardKey() {
     process.env[GROWTH_DASHBOARD_KEY_FALLBACK_ENV]?.trim() ||
     ""
   );
+}
+
+export async function fetchGrowthBackendJson(pathname: string, init: RequestInit = {}, timeoutMs = GROWTH_FETCH_TIMEOUT_MS) {
+  const key = growthDashboardKey();
+  if (!key) {
+    return { ok: false as const, status: 503, body: null, error: `${GROWTH_DASHBOARD_KEY_ENV} is not configured.` };
+  }
+
+  try {
+    const response = await fetchWithTimeout(growthEndpoint(pathname), {
+      ...init,
+      cache: "no-store",
+      headers: {
+        "X-Growth-Dashboard-Key": key,
+        Accept: "application/json",
+        ...init.headers,
+      },
+    }, timeoutMs);
+    const body = await response.json().catch(() => null);
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      body,
+      error: response.ok ? undefined : body?.message ?? body?.error ?? `Growth backend returned ${response.status}.`,
+    };
+  } catch (error) {
+    return {
+      ok: false as const,
+      status: 0,
+      body: null,
+      error: error instanceof Error ? error.message : "Growth backend is unreachable.",
+    };
+  }
+}
+
+async function getSendGridTemplatesDirectly() {
+  const apiKey = process.env[SENDGRID_API_KEY_ENV]?.trim();
+  if (!apiKey) {
+    return {
+      ok: false as const,
+      error: `Set ${SENDGRID_API_KEY_ENV} in this Next.js app, or add /api/internal/growth/outreach/sendgrid-templates to the Laravel backend.`,
+    };
+  }
+
+  const endpoint = new URL("https://api.sendgrid.com/v3/templates");
+  endpoint.searchParams.set("generations", "dynamic");
+  endpoint.searchParams.set("page_size", "200");
+
+  try {
+    const response = await fetchWithTimeout(endpoint.toString(), {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/json",
+      },
+    });
+    const body = await response.json().catch(() => null);
+
+    if (!response.ok || !Array.isArray(body?.result)) {
+      return {
+        ok: false as const,
+        error: body?.errors?.[0]?.message ?? body?.message ?? `Direct SendGrid template request failed with ${response.status}.`,
+      };
+    }
+
+    return {
+      ok: true as const,
+      data: body.result.map(sendGridTemplateFromApi),
+    };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "Direct SendGrid template request failed.",
+    };
+  }
+}
+
+function sendGridTemplateFromApi(template: Record<string, unknown>): GrowthSendGridTemplate {
+  const versions = Array.isArray(template.versions) ? template.versions : [];
+  const activeVersion = versions.find((version) => {
+    if (!version || typeof version !== "object") return false;
+    const active = (version as Record<string, unknown>).active;
+    return active === 1 || active === true;
+  }) as Record<string, unknown> | undefined;
+
+  return {
+    id: String(template.id ?? ""),
+    name: String(template.name ?? "Untitled SendGrid template"),
+    generation: typeof template.generation === "string" ? template.generation : "dynamic",
+    updated_at: typeof template.updated_at === "string" ? template.updated_at : null,
+    active_version: activeVersion
+      ? {
+          id: typeof activeVersion.id === "string" ? activeVersion.id : null,
+          name: typeof activeVersion.name === "string" ? activeVersion.name : null,
+          subject: typeof activeVersion.subject === "string" ? activeVersion.subject : null,
+          thumbnail_url: typeof activeVersion.thumbnail_url === "string" ? activeVersion.thumbnail_url : null,
+          updated_at: typeof activeVersion.updated_at === "string" ? activeVersion.updated_at : null,
+        }
+      : null,
+  };
+}
+
+async function fetchWithTimeout(input: string, init: RequestInit = {}, timeoutMs = GROWTH_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: init.signal ?? controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export function fallbackGrowthDashboard(message: string): GrowthDashboardData {

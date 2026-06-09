@@ -1,78 +1,89 @@
 import Image from "next/image";
-import { homeContent } from "@/config/home-content";
+
+const appScreens = [
+  {
+    src: "/images/screenshots/app-cutout-01.png",
+    alt: "ZenfulNote Explore screen with meditations, exercises, prompts, and exercise cards.",
+    frameClass:
+      "hidden sm:block -mr-14 opacity-[0.82] phone-motion-left",
+  },
+  {
+    src: "/images/screenshots/app-cutout-02.png",
+    alt: "ZenfulNote Check-In screen for tracking glimmers, triggers, and progress.",
+    frameClass:
+      "z-[2] w-[64vw] max-w-[250px] sm:w-[266px] sm:max-w-none phone-motion-center",
+  },
+  {
+    src: "/images/screenshots/app-cutout-03.png",
+    alt: "ZenfulNote journal prompt screen with guided reflection questions.",
+    frameClass:
+      "hidden sm:block -ml-14 opacity-[0.74] phone-motion-right",
+  },
+] as const;
 
 export function ProductDeck() {
-  const screenshots = homeContent.moments.map((moment) => ({
-    src: moment.image,
-    alt: moment.imageAlt,
-  }));
-
   return (
-    <>
-      <div className="mx-auto w-[68vw] min-w-[204px] max-w-[238px] sm:hidden">
-        <figure className="relative aspect-[1242/2688] w-full overflow-hidden rounded-[22px] border border-black/10 bg-white shadow-[0_22px_70px_rgba(0,0,0,0.13)]">
-          <Image
-            src={screenshots[1].src}
-            alt={screenshots[1].alt}
-            fill
-            className="object-cover"
-            priority
-            fetchPriority="high"
-            sizes="(max-width: 639px) 68vw"
+    <div className="product-deck-stage relative mx-auto grid min-h-[360px] w-full max-w-[740px] place-items-center overflow-visible sm:min-h-[500px] lg:min-h-[560px]">
+      <Image
+        src="/images/app/orb-blue.png"
+        alt=""
+        width={605}
+        height={605}
+        className="motion-orb absolute left-[2%] top-[8%] size-36 opacity-[0.34] blur-sm sm:size-56"
+        priority
+        sizes="14rem"
+      />
+      <Image
+        src="/images/app/orb-pink.png"
+        alt=""
+        width={605}
+        height={605}
+        className="motion-orb motion-orb-delay absolute bottom-[5%] right-[8%] size-40 opacity-[0.32] blur-sm sm:size-64"
+        sizes="15rem"
+      />
+      <div className="orbit-line absolute inset-[9%] rounded-full border border-black/10" />
+      <div className="orbit-line orbit-line-delay absolute inset-[19%] rounded-full border border-black/[0.08]" />
+
+      <div className="relative z-[1] flex w-full items-center justify-center">
+        {appScreens.map((screen, index) => (
+          <ActualAppPhone
+            key={screen.src}
+            src={screen.src}
+            alt={screen.alt}
+            className={screen.frameClass}
+            priority={index === 1}
           />
-        </figure>
+        ))}
       </div>
+    </div>
+  );
+}
 
-      <div className="relative mx-auto hidden h-[560px] w-full max-w-[680px] overflow-hidden sm:block lg:h-[620px]">
-        <div className="absolute left-8 top-8 z-[6] rounded-full border border-black/10 bg-white/86 px-4 py-2 text-xs font-medium uppercase tracking-[0.14em] text-black/62 shadow-[0_16px_60px_rgba(0,0,0,0.08)] backdrop-blur">
-          Discover yourself
-        </div>
-
-        <div className="absolute right-4 top-6 z-[3] grid size-20 place-items-center rounded-2xl border border-black/10 bg-white/88 shadow-[0_18px_70px_rgba(0,0,0,0.10)] backdrop-blur">
-          <Image
-            src="/images/brand/main-logo.png"
-            alt=""
-            width={52}
-            height={52}
-            className="size-12 object-contain brightness-0"
-          />
-        </div>
-
-        {screenshots.map((screenshot, index) => {
-          const position =
-            index === 0
-              ? "left-[8%] top-[16%] z-[2] rotate-[-4deg] scale-[0.78] opacity-80"
-              : index === 1
-                ? "left-1/2 top-[6%] z-[4] -translate-x-1/2 scale-100"
-                : "right-[5%] top-[24%] z-[1] rotate-[4deg] scale-[0.72] opacity-70";
-
-          return (
-            <figure
-              key={screenshot.src}
-              className={`hero-phone absolute aspect-[1242/2688] w-[315px] overflow-hidden rounded-[26px] border border-black/10 bg-white shadow-[0_30px_90px_rgba(0,0,0,0.16)] ${position}`}
-            >
-              <Image
-                src={screenshot.src}
-                alt={screenshot.alt}
-                fill
-                className="object-cover"
-                loading={index === 1 ? "eager" : "lazy"}
-                fetchPriority={index === 1 ? "high" : "auto"}
-                sizes="(min-width: 1024px) 315px, (min-width: 640px) 315px, 58vw"
-              />
-            </figure>
-          );
-        })}
-
-        <div className="absolute bottom-6 left-4 z-[5] max-w-[280px] rounded-2xl border border-black/10 bg-white/90 p-4 shadow-[0_20px_80px_rgba(0,0,0,0.10)] backdrop-blur">
-          <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
-            Inside ZenfulNote
-          </p>
-          <p className="mt-2 text-sm leading-6 text-black/76">
-            Explore, check in, and reflect from one calm app experience.
-          </p>
-        </div>
-      </div>
-    </>
+function ActualAppPhone({
+  src,
+  alt,
+  className = "",
+  priority = false,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+  priority?: boolean;
+}) {
+  return (
+    <figure
+      className={`actual-app-phone relative aspect-[760/1780] w-[266px] overflow-hidden rounded-[30px] bg-white shadow-[0_28px_100px_rgba(0,0,0,0.16)] ${className}`}
+    >
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        className="actual-app-shot object-cover"
+        priority={priority}
+        fetchPriority={priority ? "high" : "auto"}
+        loading={priority ? "eager" : "lazy"}
+        sizes="(min-width: 1024px) 266px, (min-width: 640px) 266px, 64vw"
+      />
+    </figure>
   );
 }

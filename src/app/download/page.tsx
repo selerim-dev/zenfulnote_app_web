@@ -29,7 +29,7 @@ const storeLinks = [
 
 export default function DownloadPage() {
   return (
-    <div className="flex min-h-screen flex-col bg-white text-black">
+    <div className="flex min-h-screen flex-col overflow-x-hidden bg-white text-black">
       <DownloadRedirect />
       <SiteHeader />
       <main className="flex-1">
@@ -45,7 +45,7 @@ export default function DownloadPage() {
           />
           <div className="absolute inset-0 -z-10 bg-black/58" />
           <div className="mx-auto grid w-full max-w-7xl items-center gap-8 px-4 py-10 sm:px-6 sm:py-12 lg:min-h-[calc(100svh-80px)] lg:grid-cols-[0.82fr_1.18fr] lg:gap-10 lg:px-8">
-            <div className="max-w-xl">
+            <div className="hero-copy-reveal max-w-xl">
               <div className="flex items-center gap-4">
                 <Image
                   src="/images/brand/app-icon-1024.png"
@@ -103,19 +103,6 @@ export default function DownloadPage() {
           </div>
         </section>
 
-        <section className="border-b border-black/10 bg-black px-4 py-10 text-white sm:px-6 lg:px-8">
-          <div className="mx-auto grid max-w-7xl gap-6 md:grid-cols-3">
-            {[
-              "Official App Store and Google Play links",
-              "No old website handoff on the download path",
-              "Built for check-ins, journaling, and reflection",
-            ].map((item) => (
-              <p key={item} className="text-sm leading-6 text-white/68">
-                {item}
-              </p>
-            ))}
-          </div>
-        </section>
       </main>
       <SiteFooter />
     </div>

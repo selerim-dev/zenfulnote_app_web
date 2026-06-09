@@ -2,8 +2,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, BookOpen } from "lucide-react";
 import { AppDownloadLinks } from "@/components/app-download-links";
+import { HomeFeatureVisual } from "@/components/home-feature-visual";
 import { ProductDeck } from "@/components/product-deck";
-import { ProductScreenshot } from "@/components/product-screenshot";
+import { ReviewCarousel } from "@/components/review-carousel";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { homeContent } from "@/config/home-content";
@@ -11,11 +12,17 @@ import { getAllPosts } from "@/lib/posts";
 
 export const dynamic = "force-dynamic";
 
+const pointOrbImages = [
+  "/images/app/orb-blue.png",
+  "/images/app/orb-orange.png",
+  "/images/app/orb-pink.png",
+] as const;
+
 export default async function Home() {
   const latestPosts = (await getAllPosts()).slice(0, 4);
 
   return (
-    <div className="flex min-h-screen flex-col bg-white text-black">
+    <div className="flex min-h-screen flex-col overflow-x-hidden bg-white text-black">
       <SiteHeader />
       <main className="flex-1">
         <section className="relative isolate overflow-hidden border-b border-black/10 bg-[#fbfaf6]">
@@ -31,13 +38,23 @@ export default async function Home() {
             />
             <div className="absolute inset-0 bg-white/50" />
           </div>
-          <div className="mx-auto grid w-full max-w-7xl items-center gap-7 px-5 py-7 sm:gap-8 sm:px-6 sm:py-10 lg:min-h-[calc(100svh-80px)] lg:grid-cols-[0.82fr_1.18fr] lg:gap-10 lg:px-8">
-            <div className="max-w-xl">
+          <div className="mx-auto grid w-full max-w-7xl items-center gap-7 px-5 py-7 sm:gap-8 sm:px-6 sm:py-10 lg:min-h-[calc(88svh-80px)] lg:grid-cols-[0.82fr_1.18fr] lg:gap-10 lg:px-8">
+            <div className="hero-copy-reveal max-w-xl">
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">
                 {homeContent.hero.eyebrow}
               </p>
-              <h1 className="mt-4 text-4xl font-medium leading-[1] text-black sm:mt-5 sm:text-6xl sm:leading-[0.98]">
-                {homeContent.hero.title}
+              <h1 className="mt-4 sm:mt-5">
+                <span className="sr-only">{homeContent.hero.title}</span>
+                <Image
+                  src="/images/brand/wordmark-white-large.png"
+                  alt=""
+                  width={920}
+                  height={228}
+                  className="h-auto w-full max-w-[520px]"
+                  style={{ filter: "brightness(0)" }}
+                  priority
+                  sizes="(min-width: 640px) 520px, calc(100vw - 40px)"
+                />
               </h1>
               <p className="mt-4 max-w-lg text-[0.95rem] leading-6 text-muted sm:mt-5 sm:text-lg sm:leading-7">
                 {homeContent.hero.description}
@@ -58,14 +75,25 @@ export default async function Home() {
           </div>
         </section>
 
-        <section className="border-b border-black/10 bg-white sm:bg-[#f6f4ef]">
-          <div className="mx-auto grid w-full max-w-xl divide-y divide-black/10 px-5 sm:max-w-7xl sm:gap-px sm:divide-y-0 sm:bg-black/10 sm:px-6 lg:grid-cols-3 lg:px-8">
-            {homeContent.proofPoints.map((point) => (
+        <section className="relative z-[2] border-b border-black/10 bg-[#fbfaf6] px-4 pb-5 sm:px-6 lg:px-8">
+          <div className="proof-ribbon mx-auto -mt-5 grid w-full max-w-7xl overflow-hidden rounded-[26px] border border-black/10 bg-white/72 shadow-[0_22px_90px_rgba(0,0,0,0.08)] backdrop-blur-xl md:grid-cols-3">
+            {homeContent.proofPoints.map((point, index) => (
               <div
                 key={point}
-                className="bg-transparent py-4 backdrop-blur-sm sm:bg-white/78 sm:px-5 sm:py-6 lg:px-8"
+                className="proof-tab-reveal flex min-h-[76px] items-center gap-3 px-4 py-3 md:border-l md:border-black/10 md:first:border-l-0 lg:px-6"
+                style={{
+                  animationDelay: `${index * 90}ms`,
+                }}
               >
-                <p className="max-w-sm text-[0.88rem] leading-5 text-black/68 sm:text-sm sm:leading-6">
+                <Image
+                  src={pointOrbImages[index % pointOrbImages.length]}
+                  alt=""
+                  width={605}
+                  height={605}
+                  className="size-8 shrink-0 object-contain"
+                  sizes="2rem"
+                />
+                <p className="max-w-[19rem] text-[0.88rem] leading-5 text-black/68 sm:text-sm sm:leading-6">
                   {point}
                 </p>
               </div>
@@ -74,86 +102,105 @@ export default async function Home() {
         </section>
 
         <section aria-label="Product moments">
-          {homeContent.moments.map((moment, index) => (
-            <section
-              key={moment.title}
-              className="reveal-on-scroll border-b border-black/10"
-            >
-              <div
-                className={`mx-auto grid min-h-[74svh] w-full max-w-7xl items-center gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[0.86fr_1.14fr] lg:gap-16 lg:px-8 ${
-                  index % 2 === 1 ? "lg:grid-cols-[1.14fr_0.86fr]" : ""
+          {homeContent.moments.map((moment, index) => {
+            const dark = index === 1;
+
+            return (
+              <section
+                key={moment.title}
+                className={`reveal-on-scroll border-b ${
+                  dark
+                    ? "border-white/10 bg-[#101010] text-white"
+                    : index === 0
+                      ? "border-black/10 bg-[#fbfaf6] text-black"
+                      : "border-black/10 bg-white text-black"
                 }`}
               >
                 <div
-                  className={`max-w-md ${
-                    index % 2 === 1 ? "lg:order-2" : ""
+                  className={`mx-auto grid min-h-[76svh] w-full max-w-7xl items-center gap-9 px-4 py-14 sm:px-6 lg:grid-cols-[0.84fr_1.16fr] lg:gap-16 lg:px-8 ${
+                    index % 2 === 1 ? "lg:grid-cols-[1.12fr_0.88fr]" : ""
                   }`}
                 >
-                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">
-                    {moment.eyebrow}
-                  </p>
-                  <h2 className="editorial mt-4 text-3xl font-semibold leading-[1.08] text-black sm:text-4xl">
-                    {moment.title}
-                  </h2>
-                  <p className="mt-5 text-base leading-7 text-muted">
-                    {moment.description}
-                  </p>
-                  <div className="mt-7 grid gap-2">
-                    {moment.points.map((point, pointIndex) => (
-                      <div
-                        key={point}
-                        className="pop-on-scroll flex items-center justify-between border-b border-black/10 py-3 text-sm text-black/76"
-                        style={{
-                          animationDelay: `${pointIndex * 90}ms`,
-                        }}
-                      >
-                        <span>{point}</span>
-                        <ArrowRight
-                          aria-hidden="true"
-                          size={15}
-                          strokeWidth={1.8}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className={index % 2 === 1 ? "lg:order-1" : ""}>
-                  <div className="feature-stage relative grid min-h-[360px] place-items-center overflow-hidden rounded-[22px] border border-black/10 bg-[#fbfaf6] p-4 shadow-[0_28px_120px_rgba(0,0,0,0.08)] sm:min-h-[480px] sm:rounded-[28px] sm:p-8">
-                    <Image
-                      src={
-                        index === 1
-                          ? "/images/generated/brand-atmosphere-dark.png"
-                          : "/images/generated/brand-atmosphere-editorial.png"
-                      }
-                      alt=""
-                      width={1717}
-                      height={916}
-                      className={`object-cover ${
-                        index === 1 ? "opacity-80" : "opacity-[0.64]"
-                      } absolute inset-0 size-full`}
-                      fetchPriority={index === 0 ? "high" : "auto"}
-                      loading={index === 0 ? "eager" : "lazy"}
-                      sizes="(min-width: 1024px) 52vw, 100vw"
-                    />
-                    <div
-                      className={`absolute inset-0 ${
-                        index === 1 ? "bg-black/42" : "bg-white/32"
+                  <div
+                    className={`max-w-md ${
+                      index % 2 === 1 ? "lg:order-2" : ""
+                    }`}
+                    data-scroll-reveal
+                  >
+                    <p
+                      className={`text-xs font-medium uppercase tracking-[0.18em] ${
+                        dark ? "text-white/50" : "text-muted"
                       }`}
-                    />
-                    <ProductScreenshot
-                      src={moment.image}
-                      alt={moment.imageAlt}
-                      priority={index <= 1}
-                      className="relative z-[1] lg:max-w-[340px]"
+                    >
+                      {moment.eyebrow}
+                    </p>
+                    <h2
+                      className={`editorial mt-4 text-3xl font-semibold leading-[1.08] sm:text-4xl ${
+                        dark ? "text-white" : "text-black"
+                      }`}
+                    >
+                      {moment.title}
+                    </h2>
+                    <p
+                      className={`mt-5 text-base leading-7 ${
+                        dark ? "text-white/66" : "text-muted"
+                      }`}
+                    >
+                      {moment.description}
+                    </p>
+                    <div className="mt-7 flex flex-wrap gap-2.5">
+                      {moment.points.map((point, pointIndex) => (
+                        <span
+                          key={point}
+                          className={`pop-on-scroll inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-sm font-medium ${
+                            dark
+                              ? "border-white/12 bg-white/8 text-white/74"
+                              : "border-black/10 bg-white/72 text-black/74"
+                          }`}
+                          style={{
+                            animationDelay: `${pointIndex * 80}ms`,
+                          }}
+                        >
+                          <Image
+                            src={
+                              pointOrbImages[
+                                pointIndex % pointOrbImages.length
+                              ]
+                            }
+                            alt=""
+                            width={605}
+                            height={605}
+                            className="size-4 shrink-0 object-contain"
+                            sizes="1rem"
+                          />
+                          <span>{point}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div
+                    className={index % 2 === 1 ? "lg:order-1" : ""}
+                    data-scroll-reveal="visual"
+                    style={{
+                      animationDelay: "120ms",
+                    }}
+                  >
+                    <HomeFeatureVisual
+                      variant={moment.visual}
+                      image={moment.image}
+                      imageAlt={moment.imageAlt}
+                      dark={dark}
                     />
                   </div>
                 </div>
-              </div>
-            </section>
-          ))}
+              </section>
+            );
+          })}
         </section>
 
-        <section className="paper-surface relative isolate overflow-hidden border-b border-black/10">
+        <ReviewCarousel />
+
+        <section className="paper-surface reveal-on-scroll relative isolate overflow-hidden border-b border-black/10">
           <div className="pointer-events-none absolute inset-y-0 right-0 -z-10 hidden w-[46%] lg:block">
             <Image
               src="/images/generated/brand-atmosphere-editorial.png"
@@ -166,7 +213,7 @@ export default async function Home() {
             <div className="absolute inset-0 bg-white/42" />
           </div>
           <div className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[0.74fr_1.26fr] lg:px-8">
-            <div className="max-w-md">
+            <div className="max-w-md" data-scroll-reveal>
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">
                 {homeContent.blog.eyebrow}
               </p>
@@ -186,11 +233,14 @@ export default async function Home() {
             </div>
 
             <div className="grid content-center gap-3">
-              {latestPosts.map((post) => (
+              {latestPosts.map((post, index) => (
                 <Link
                   key={post.slug}
                   href={`/blog/${post.slug}`}
-                  className="group grid gap-3 rounded-lg border border-black/10 bg-white/70 p-5 transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_18px_60px_rgba(0,0,0,0.08)] sm:grid-cols-[1fr_auto]"
+                  className="pop-on-scroll group grid gap-3 rounded-lg border border-black/10 bg-white/70 p-5 transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_18px_60px_rgba(0,0,0,0.08)] sm:grid-cols-[1fr_auto]"
+                  style={{
+                    animationDelay: `${index * 80}ms`,
+                  }}
                 >
                   <div>
                     <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
@@ -215,7 +265,7 @@ export default async function Home() {
           </div>
         </section>
 
-        <section className="relative isolate overflow-hidden bg-black px-4 py-16 text-white sm:px-6 lg:px-8">
+        <section className="reveal-on-scroll relative isolate overflow-hidden bg-black px-4 py-16 text-white sm:px-6 lg:px-8">
           <Image
             src="/images/generated/brand-atmosphere-dark.png"
             alt=""
@@ -226,13 +276,26 @@ export default async function Home() {
           />
           <div className="absolute inset-0 -z-10 bg-black/58" />
           <div className="mx-auto flex max-w-7xl flex-col justify-between gap-8 md:flex-row md:items-center">
-            <div>
-              <p className="text-sm text-white/56">ZenfulNote</p>
+            <div data-scroll-reveal>
+              <Image
+                src="/images/brand/wordmark-white-large.png"
+                alt="ZenfulNote"
+                width={210}
+                height={52}
+                className="h-7 w-auto"
+              />
               <h2 className="editorial mt-3 max-w-2xl text-3xl font-semibold leading-[1.1] sm:text-4xl">
                 Begin with one honest check-in.
               </h2>
             </div>
-            <AppDownloadLinks compact includeStores={false} inverse />
+            <div
+              data-scroll-reveal
+              style={{
+                animationDelay: "120ms",
+              }}
+            >
+              <AppDownloadLinks compact includeStores={false} inverse />
+            </div>
           </div>
         </section>
       </main>
