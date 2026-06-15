@@ -304,6 +304,18 @@ button:focus-visible {
   margin-top: 0.5rem;
 }
 
+.article-content a {
+  color: var(--foreground);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.article-content a:hover {
+  color: #5068e7;
+}
+
 .article-content blockquote {
   border-left: 2px solid var(--foreground);
   color: #3a3a3a;

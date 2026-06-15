@@ -94,6 +94,34 @@ test("validates and normalizes Looprail article payloads", () => {
   assert.deepEqual(article.secondaryKeywords, ["related keyword"]);
 });
 
+test("accepts markdown and HTML body aliases", () => {
+  const markdownArticle = validateLooprailArticle(
+    {
+      ...sampleArticle,
+      body_markdown: undefined,
+      html: undefined,
+      markdown: "## Alias\n\nMarkdown alias body.",
+    },
+    "draft",
+  );
+
+  assert.equal(markdownArticle.contentFormat, "markdown");
+  assert.match(markdownArticle.content, /Markdown alias body/);
+
+  const htmlArticle = validateLooprailArticle(
+    {
+      ...sampleArticle,
+      body_markdown: undefined,
+      html: undefined,
+      body_html: "<p>HTML alias body.</p>",
+    },
+    "draft",
+  );
+
+  assert.equal(htmlArticle.contentFormat, "html");
+  assert.match(htmlArticle.content, /HTML alias body/);
+});
+
 test("accepts Looprail drafted status as a draft alias", () => {
   const article = validateLooprailArticle(
     {
@@ -230,6 +258,119 @@ test("writes runtime articles without touching MDX content", async (t) => {
   assert.equal(articles[0].updatedAt, "2026-06-03");
   assert.equal(articles[0].published, true);
   assert.match(articles[0].content, /Markdown article body/);
+});
+
+test("stores expanded Looprail resource metadata with runtime articles", async (t) => {
+  const runtimeDirectory = await createTempContentDir();
+  t.after(() => rm(runtimeDirectory, { recursive: true, force: true }));
+
+  const result = await persistLooprailArticle(
+    {
+      ...sampleArticle,
+      status: "published",
+      quality_evaluation: {
+        passed: true,
+        has_source_reference: true,
+        has_hyperlink: true,
+        has_real_life_example: true,
+        has_reflection_prompt: true,
+        has_zenfulnote_tie_in: true,
+        has_clear_cta_or_lead_magnet: true,
+        avoids_unverified_claims: true,
+        citations_are_attributed: true,
+        no_long_unapproved_copyrighted_quotes: true,
+      },
+      source_references: [
+        {
+          id: "jung-shadow",
+          title: "Aion",
+          author: "C. G. Jung",
+          source_type: "psychology/depth psychology book",
+          url: "https://example.com/aion",
+          publication: "Collected Works",
+          year: 1951,
+          page_or_timestamp: "p. 8",
+          exact_quote: "Short approved quote.",
+          approved_paraphrase: "A short approved paraphrase.",
+          citation_text: "Jung, Aion",
+          themes: ["shadow"],
+          topics: ["depth psychology"],
+          keywords: ["shadow work"],
+          allowed_use: ["quote", "paraphrase", "link"],
+          copyright_note: "Approved short quote.",
+          notes: "Use sparingly.",
+        },
+      ],
+      hyperlinks: [
+        {
+          id: "zenfulnote-download",
+          title: "Download ZenfulNote",
+          url: "https://www.zenfulnote.app/download",
+          source_type: "zenfulnote",
+          reason: "App tie-in",
+        },
+      ],
+      real_life_examples: [
+        {
+          id: "defensive-friend",
+          scenario: "A friend grows defensive whenever a certain topic comes up.",
+          topics: ["triggers", "shadow"],
+        },
+      ],
+      reflection_prompt: "Where does this pattern show up in your own life?",
+      zenfulnote_app_tie_in: {
+        label: "Track the pattern in ZenfulNote",
+        url: "https://www.zenfulnote.app/download",
+        guidance: "Invite the reader to use the app for reflective check-ins.",
+      },
+      lead_magnet: {
+        id: "shadow-prompts",
+        title: "30 Shadow Work Prompts",
+        description: "Go deeper with a free prompt guide.",
+        cta_label: "Access the prompts",
+        destination_url: "https://www.zenfulnote.app/shadow-prompts",
+        email_required: true,
+      },
+      blog_resource_context: {
+        topic: "shadow work",
+        selected_by: "looprail",
+      },
+    },
+    "published",
+    {
+      baseUrl: "https://example.com",
+      runtimeDirectory,
+      now: new Date("2026-06-03T12:00:00Z"),
+    },
+  );
+
+  assert.deepEqual(result, {
+    id: "article-title",
+    slug: "article-title",
+    status: "published",
+    storage: "filesystem",
+    rendering_status: "public",
+    visibility: "public",
+    url: "https://example.com/blog/article-title",
+    public_url: "https://example.com/blog/article-title",
+  });
+
+  const article = await readLooprailStoredArticleBySlug("article-title", {
+    runtimeDirectory,
+  });
+
+  assert.equal(article?.looprail.sourceReferences?.[0]?.id, "jung-shadow");
+  assert.equal(article?.looprail.hyperlinks?.[0]?.url, "https://www.zenfulnote.app/download");
+  assert.equal(article?.looprail.realLifeExamples?.[0]?.id, "defensive-friend");
+  assert.equal(article?.looprail.reflectionPrompt, "Where does this pattern show up in your own life?");
+  assert.equal(article?.looprail.zenfulnoteAppTieIn?.label, "Track the pattern in ZenfulNote");
+  assert.equal(article?.looprail.leadMagnet?.id, "shadow-prompts");
+  assert.deepEqual(article?.looprail.blogResourceContext, {
+    topic: "shadow work",
+    selected_by: "looprail",
+  });
+  assert.equal(article?.looprail.qualityEvaluation?.has_source_reference, true);
+  assert.equal(article?.looprail.qualityEvaluation?.no_long_unapproved_copyrighted_quotes, true);
 });
 
 test("edits, promotes, and deletes runtime articles", async (t) => {

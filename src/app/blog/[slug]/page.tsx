@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import { BlogImage } from "@/components/blog-image";
 import { mdxComponents } from "@/components/mdx-components";
@@ -116,9 +116,85 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
           <div className="article-content mt-12">
             <MDXRemote source={post.content} components={mdxComponents} />
           </div>
+          <LeadMagnetCta leadMagnet={post.leadMagnet} />
         </article>
       </main>
       <SiteFooter />
     </div>
   );
+}
+
+function LeadMagnetCta({
+  leadMagnet,
+}: {
+  leadMagnet: Record<string, unknown> | undefined;
+}) {
+  if (!leadMagnet) {
+    return null;
+  }
+
+  const title = readText(leadMagnet.title);
+  const href = safeLeadMagnetHref(leadMagnet.destination_url);
+
+  if (!title || !href) {
+    return null;
+  }
+
+  const description = readText(leadMagnet.description);
+  const ctaLabel = readText(leadMagnet.cta_label) ?? "Open resource";
+  const isExternal = /^https?:\/\//i.test(href);
+
+  return (
+    <aside className="mt-12 rounded-lg border border-black/10 bg-[#fbfaf6] p-5 sm:p-6">
+      <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted">
+        Free resource
+      </p>
+      <h2 className="editorial mt-3 text-2xl font-semibold leading-tight text-black">
+        {title}
+      </h2>
+      {description ? (
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted sm:text-base sm:leading-7">
+          {description}
+        </p>
+      ) : null}
+      <a
+        href={href}
+        target={isExternal ? "_blank" : undefined}
+        rel={isExternal ? "noopener noreferrer" : undefined}
+        className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-full bg-black px-5 text-sm font-semibold text-white transition hover:bg-[#2d2d2d]"
+      >
+        {ctaLabel}
+        <ArrowRight aria-hidden="true" size={16} strokeWidth={1.8} />
+      </a>
+    </aside>
+  );
+}
+
+function readText(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  return normalized || undefined;
+}
+
+function safeLeadMagnetHref(value: unknown): string | undefined {
+  const href = readText(value);
+  if (!href) {
+    return undefined;
+  }
+
+  if (href.startsWith("/")) {
+    return href;
+  }
+
+  try {
+    const url = new URL(href);
+    return url.protocol === "https:" || url.protocol === "http:"
+      ? url.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }

@@ -93,6 +93,42 @@ paths continue through `next/image`; remote Looprail image URLs render directly
 so the blog can use client-provided images without adding a new image host to
 `next.config.ts`.
 
+Markdown remains the source of truth for article rendering. The preferred field
+is `body_markdown`, but the API also accepts `markdown`, `body`, and `content`
+as markdown fallbacks. For HTML content, use `html` or `body_html`.
+
+Looprail can also send optional article resource metadata. These fields are
+stored under the article's `looprail` metadata and are not required for older
+payloads:
+
+```json
+{
+  "source_references": [],
+  "hyperlinks": [],
+  "real_life_examples": [],
+  "reflection_prompt": "Where does this pattern show up in your life?",
+  "zenfulnote_app_tie_in": {
+    "label": "Track the pattern in ZenfulNote",
+    "url": "https://www.zenfulnote.app/download",
+    "guidance": "Invite a reflective check-in."
+  },
+  "lead_magnet": {
+    "id": "shadow-prompts",
+    "title": "30 Shadow Work Prompts",
+    "description": "Go deeper with a free prompt guide.",
+    "cta_label": "Access the prompts",
+    "destination_url": "https://www.zenfulnote.app/shadow-prompts",
+    "email_required": true
+  },
+  "blog_resource_context": {}
+}
+```
+
+The public article page renders `lead_magnet` as a small CTA block below the
+article body when it includes a title and safe HTTP(S) or site-relative
+`destination_url`. Markdown links and any in-body CTA copy should still be sent
+inside `body_markdown`.
+
 All endpoints require this header:
 
 ```http

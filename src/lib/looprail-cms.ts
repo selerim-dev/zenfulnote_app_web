@@ -40,13 +40,76 @@ const BLOB_INDEX_PATH = `${BLOB_ARTICLES_DIRECTORY}/index.json`;
 
 export type LooprailArticleStatus = "draft" | "published";
 
+export type LooprailSourceReference = Record<string, unknown> & {
+  id?: string;
+  title?: string;
+  author?: string | null;
+  source_type?: string;
+  url?: string | null;
+  publication?: string | null;
+  year?: number | null;
+  page_or_timestamp?: string | null;
+  exact_quote?: string | null;
+  approved_paraphrase?: string | null;
+  citation_text?: string;
+  themes?: string[];
+  topics?: string[];
+  keywords?: string[];
+  allowed_use?: string[];
+  copyright_note?: string | null;
+  notes?: string | null;
+};
+
+export type LooprailHyperlink = Record<string, unknown> & {
+  id?: string;
+  title?: string;
+  url?: string;
+  source_type?: string;
+  reason?: string;
+};
+
+export type LooprailRealLifeExample = Record<string, unknown> & {
+  id?: string;
+  scenario?: string;
+  topics?: string[];
+};
+
+export type LooprailZenfulnoteAppTieIn = Record<string, unknown> & {
+  label?: string;
+  url?: string | null;
+  guidance?: string;
+};
+
+export type LooprailLeadMagnet = Record<string, unknown> & {
+  id?: string;
+  title?: string;
+  description?: string;
+  cta_label?: string;
+  destination_url?: string;
+  email_required?: boolean;
+};
+
+export type LooprailArticleResourceMetadata = {
+  sourceReferences?: LooprailSourceReference[];
+  hyperlinks?: LooprailHyperlink[];
+  realLifeExamples?: LooprailRealLifeExample[];
+  reflectionPrompt?: string;
+  zenfulnoteAppTieIn?: LooprailZenfulnoteAppTieIn;
+  leadMagnet?: LooprailLeadMagnet;
+  blogResourceContext?: Record<string, unknown>;
+};
+
 export type LooprailArticlePayload = {
   title: string;
   slug: string;
   excerpt?: string;
   meta_description?: string;
   body_markdown?: string;
+  body?: string;
+  content?: string;
+  markdown?: string;
   html?: string;
+  body_html?: string;
   featured_image?: string;
   featured_image_alt?: string;
   primary_keyword?: string;
@@ -63,6 +126,13 @@ export type LooprailArticlePayload = {
   external_article_id?: string;
   images?: Record<string, unknown>[];
   assets?: Record<string, unknown>[];
+  source_references?: LooprailSourceReference[];
+  hyperlinks?: LooprailHyperlink[];
+  real_life_examples?: LooprailRealLifeExample[];
+  reflection_prompt?: string;
+  zenfulnote_app_tie_in?: LooprailZenfulnoteAppTieIn;
+  lead_magnet?: LooprailLeadMagnet;
+  blog_resource_context?: Record<string, unknown>;
 };
 
 export type NormalizedLooprailArticle = {
@@ -88,6 +158,7 @@ export type NormalizedLooprailArticle = {
   externalArticleId?: string;
   images?: Record<string, unknown>[];
   assets?: Record<string, unknown>[];
+  resourceMetadata: LooprailArticleResourceMetadata;
 };
 
 export type StoredLooprailArticle = {
@@ -124,6 +195,13 @@ export type StoredLooprailArticle = {
     externalArticleId?: string;
     images?: Record<string, unknown>[];
     assets?: Record<string, unknown>[];
+    sourceReferences?: LooprailSourceReference[];
+    hyperlinks?: LooprailHyperlink[];
+    realLifeExamples?: LooprailRealLifeExample[];
+    reflectionPrompt?: string;
+    zenfulnoteAppTieIn?: LooprailZenfulnoteAppTieIn;
+    leadMagnet?: LooprailLeadMagnet;
+    blogResourceContext?: Record<string, unknown>;
   };
 };
 
@@ -292,6 +370,26 @@ function optionalStringArray(
   return Array.from(new Set(strings));
 }
 
+function optionalStringFromFields(
+  payload: Record<string, unknown>,
+  fields: string[],
+  issues: string[],
+  maxLength = MAX_SHORT_TEXT_LENGTH,
+): string | undefined {
+  for (const field of fields) {
+    if (payload[field] === undefined || payload[field] === null) {
+      continue;
+    }
+
+    const value = optionalString(payload, field, issues, maxLength);
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
 function normalizeSlug(value: string): string {
   return value
     .trim()
@@ -407,6 +505,99 @@ function optionalJsonObjectArray(
   return objects;
 }
 
+function optionalLooseString(
+  payload: Record<string, unknown>,
+  field: string,
+  maxLength = MAX_SHORT_TEXT_LENGTH,
+): string | undefined {
+  const value = payload[field];
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  return trimmedOptional(value, maxLength);
+}
+
+function optionalLooseJsonObject(
+  payload: Record<string, unknown>,
+  field: string,
+): Record<string, unknown> | undefined {
+  const value = payload[field];
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  try {
+    JSON.stringify(value);
+  } catch {
+    return undefined;
+  }
+
+  return value;
+}
+
+function optionalLooseJsonObjectArray<T extends Record<string, unknown>>(
+  payload: Record<string, unknown>,
+  field: string,
+): T[] | undefined {
+  const value = payload[field];
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const objects = value.filter((item): item is T => {
+    if (!isPlainObject(item)) {
+      return false;
+    }
+
+    try {
+      JSON.stringify(item);
+    } catch {
+      return false;
+    }
+
+    return true;
+  });
+
+  return objects.length ? objects : undefined;
+}
+
+function readResourceMetadata(
+  payload: Record<string, unknown>,
+): LooprailArticleResourceMetadata {
+  return compactObject({
+    sourceReferences: optionalLooseJsonObjectArray<LooprailSourceReference>(
+      payload,
+      "source_references",
+    ),
+    hyperlinks: optionalLooseJsonObjectArray<LooprailHyperlink>(
+      payload,
+      "hyperlinks",
+    ),
+    realLifeExamples: optionalLooseJsonObjectArray<LooprailRealLifeExample>(
+      payload,
+      "real_life_examples",
+    ),
+    reflectionPrompt: optionalLooseString(
+      payload,
+      "reflection_prompt",
+      MAX_BODY_LENGTH,
+    ),
+    zenfulnoteAppTieIn: optionalLooseJsonObject(
+      payload,
+      "zenfulnote_app_tie_in",
+    ) as LooprailZenfulnoteAppTieIn | undefined,
+    leadMagnet: optionalLooseJsonObject(
+      payload,
+      "lead_magnet",
+    ) as LooprailLeadMagnet | undefined,
+    blogResourceContext: optionalLooseJsonObject(
+      payload,
+      "blog_resource_context",
+    ),
+  }) as LooprailArticleResourceMetadata;
+}
+
 function unsafeContentIssue(content: string): string | undefined {
   if (/^\s*(import|export)\s+/im.test(content)) {
     return "content must not include MDX import or export statements";
@@ -470,13 +661,18 @@ export function validateLooprailArticle(
 
   const excerpt = optionalString(payload, "excerpt", issues);
   const metaDescription = optionalString(payload, "meta_description", issues);
-  const bodyMarkdown = optionalString(
+  const bodyMarkdown = optionalStringFromFields(
     payload,
-    "body_markdown",
+    ["body_markdown", "markdown", "body", "content"],
     issues,
     MAX_BODY_LENGTH,
   );
-  const html = optionalString(payload, "html", issues, MAX_BODY_LENGTH);
+  const html = optionalStringFromFields(
+    payload,
+    ["html", "body_html"],
+    issues,
+    MAX_BODY_LENGTH,
+  );
   const rawFeaturedImage =
     optionalString(payload, "featured_image", issues, MAX_URL_LENGTH) ??
     optionalString(payload, "featuredImage", issues, MAX_URL_LENGTH);
@@ -523,6 +719,7 @@ export function validateLooprailArticle(
   );
   const images = optionalJsonObjectArray(payload, "images", issues);
   const assets = optionalJsonObjectArray(payload, "assets", issues);
+  const resourceMetadata = readResourceMetadata(payload);
   const statusIssue = readExpectedStatusIssue(payload, expectedStatus);
 
   if (statusIssue) {
@@ -533,7 +730,9 @@ export function validateLooprailArticle(
   const contentFormat = bodyMarkdown ? "markdown" : "html";
 
   if (!content) {
-    issues.push("body_markdown or html is required");
+    issues.push(
+      "body_markdown, markdown, body, content, html, or body_html is required",
+    );
   } else {
     const contentIssue = unsafeContentIssue(content);
     if (contentIssue) {
@@ -570,6 +769,7 @@ export function validateLooprailArticle(
       : undefined,
     images,
     assets,
+    resourceMetadata,
   };
 }
 
@@ -1345,6 +1545,13 @@ function buildFrontmatter(
       externalArticleId: article.externalArticleId,
       images: article.images,
       assets: article.assets,
+      sourceReferences: article.resourceMetadata.sourceReferences,
+      hyperlinks: article.resourceMetadata.hyperlinks,
+      realLifeExamples: article.resourceMetadata.realLifeExamples,
+      reflectionPrompt: article.resourceMetadata.reflectionPrompt,
+      zenfulnoteAppTieIn: article.resourceMetadata.zenfulnoteAppTieIn,
+      leadMagnet: article.resourceMetadata.leadMagnet,
+      blogResourceContext: article.resourceMetadata.blogResourceContext,
     },
   }) as MatterData;
 }
@@ -1396,6 +1603,13 @@ function buildStoredArticle(
       externalArticleId: article.externalArticleId,
       images: article.images,
       assets: article.assets,
+      sourceReferences: article.resourceMetadata.sourceReferences,
+      hyperlinks: article.resourceMetadata.hyperlinks,
+      realLifeExamples: article.resourceMetadata.realLifeExamples,
+      reflectionPrompt: article.resourceMetadata.reflectionPrompt,
+      zenfulnoteAppTieIn: article.resourceMetadata.zenfulnoteAppTieIn,
+      leadMagnet: article.resourceMetadata.leadMagnet,
+      blogResourceContext: article.resourceMetadata.blogResourceContext,
     },
   }) as StoredLooprailArticle;
 }

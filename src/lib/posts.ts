@@ -5,6 +5,7 @@ import { cache } from "react";
 import { normalizeRenderableBlogImageSrc } from "./blog-images.ts";
 import {
   readLooprailStoredArticles,
+  type LooprailLeadMagnet,
   type StoredLooprailArticle,
 } from "@/lib/looprail-cms";
 
@@ -22,6 +23,7 @@ export type BlogPostMeta = {
   featuredImageAlt?: string;
   published: boolean;
   author: string;
+  leadMagnet?: LooprailLeadMagnet;
 };
 
 export type BlogPost = BlogPostMeta & {
@@ -33,6 +35,23 @@ const postsDirectory = path.join(process.cwd(), "content", "blog");
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) === Object.prototype
+  );
+}
+
+function readLeadMagnet(value: unknown): LooprailLeadMagnet | undefined {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  return value as LooprailLeadMagnet;
 }
 
 function readTime(content: string) {
@@ -101,6 +120,9 @@ function normalizePost(fileName: string): BlogPost {
         : undefined,
     published: data.published,
     author: data.author,
+    leadMagnet: readLeadMagnet(
+      isPlainObject(data.looprail) ? data.looprail.leadMagnet : undefined,
+    ),
     content,
     readingTime: readTime(content),
   };
@@ -123,6 +145,7 @@ function normalizeStoredPost(article: StoredLooprailArticle): BlogPost {
     featuredImageAlt: featuredImage ? article.featuredImageAlt : undefined,
     published: article.published,
     author: article.author,
+    leadMagnet: article.looprail.leadMagnet,
     content: article.content,
     readingTime: readTime(article.content),
   };
