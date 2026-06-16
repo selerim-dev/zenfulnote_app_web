@@ -7,9 +7,10 @@ import { BlogFilterGrid } from "@/components/blog-filter-grid";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getAllCategories, getAllPosts } from "@/lib/posts";
+import { getBlogImageAlt } from "@/lib/seo";
 
 export const metadata: Metadata = {
-  title: "Blog",
+  title: "Shadow Work Journal Blog",
   description:
     "ZenfulNote writing on journaling, emotional awareness, shadow work, glimmers, triggers, and self-discovery.",
   alternates: {
@@ -69,7 +70,7 @@ export default async function BlogPage() {
               <div className="absolute inset-0 bg-white/22" />
               <Image
                 src="/images/brand/main-logo.png"
-                alt=""
+                alt="ZenfulNote logo"
                 width={78}
                 height={78}
                 className="absolute right-6 top-6 size-[78px] object-contain opacity-[0.82]"
@@ -104,7 +105,7 @@ export default async function BlogPage() {
                   />
                   <BlogImage
                     src={featuredImage}
-                    alt={featured.featuredImageAlt ?? ""}
+                    alt={getBlogImageAlt(featured)}
                     fill
                     className="object-contain p-8"
                     priority

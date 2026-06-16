@@ -11,6 +11,11 @@ function Callout({ children }: { children: React.ReactNode }) {
 
 export const mdxComponents: MDXComponents = {
   Callout,
+  h1: ({ children }) => (
+    <h2 className="editorial mt-10 text-3xl font-semibold leading-tight text-black sm:text-4xl">
+      {children}
+    </h2>
+  ),
   img: ({ src, alt }) => {
     if (typeof src !== "string") {
       return null;
@@ -19,7 +24,7 @@ export const mdxComponents: MDXComponents = {
     return (
       <BlogImage
         src={src}
-        alt={alt ?? ""}
+        alt={alt ?? "ZenfulNote article image"}
         width={1200}
         height={760}
         className="my-8 rounded-lg border border-black/10 object-cover"

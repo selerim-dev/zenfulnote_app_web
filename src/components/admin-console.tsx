@@ -369,7 +369,7 @@ export function AdminConsole({
             <div className="relative z-10 flex min-w-0 items-center gap-3 pr-2 lg:justify-self-start">
               <Image
                 src="/images/brand/app-icon-1024.png"
-                alt=""
+                alt="ZenfulNote app icon"
                 width={38}
                 height={38}
                 className="size-9 rounded-lg border border-black/10"
@@ -3418,7 +3418,7 @@ function MediaPreview({ row }: { row: GrowthContentRow }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={thumbnailUrl}
-            alt=""
+            alt="Content asset thumbnail"
             onError={() => markFailed("thumbnail")}
             className="max-h-72 w-full object-contain"
           />

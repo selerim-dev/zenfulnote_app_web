@@ -14,7 +14,7 @@ export function SiteHeader() {
         >
           <Image
             src="/images/brand/app-icon-1024.png"
-            alt=""
+            alt="ZenfulNote app icon"
             width={40}
             height={40}
             className="size-9 rounded-lg sm:size-10"
@@ -22,7 +22,7 @@ export function SiteHeader() {
           />
           <Image
             src="/images/brand/wordmark-white-large.png"
-            alt=""
+            alt="ZenfulNote"
             width={160}
             height={40}
             className="h-6 w-auto shrink-0 sm:h-7"

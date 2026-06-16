@@ -8,6 +8,7 @@ import { mdxComponents } from "@/components/mdx-components";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getAllPosts, getPostBySlug } from "@/lib/posts";
+import { getBlogImageAlt, getBlogSeoTitle } from "@/lib/seo";
 
 type BlogPostPageProps = {
   params: Promise<{
@@ -34,9 +35,10 @@ export async function generateMetadata({
   }
 
   const seoDescription = post.metaDescription ?? post.description;
+  const seoTitle = getBlogSeoTitle(post);
 
   return {
-    title: post.title,
+    title: seoTitle,
     description: seoDescription,
     alternates: {
       canonical: `/blog/${post.slug}`,
@@ -52,7 +54,7 @@ export async function generateMetadata({
         ? [
             {
               url: post.featuredImage,
-              alt: post.featuredImageAlt,
+              alt: getBlogImageAlt(post),
             },
           ]
         : undefined,
@@ -105,7 +107,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
           {post.featuredImage ? (
             <BlogImage
               src={post.featuredImage}
-              alt={post.featuredImageAlt ?? ""}
+              alt={getBlogImageAlt(post)}
               width={1200}
               height={760}
               priority
@@ -114,7 +116,10 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
           ) : null}
 
           <div className="article-content mt-12">
-            <MDXRemote source={post.content} components={mdxComponents} />
+            <MDXRemote
+              source={stripRedundantLeadingTitle(post.content, post.title)}
+              components={mdxComponents}
+            />
           </div>
           <LeadMagnetCta leadMagnet={post.leadMagnet} />
         </article>
@@ -197,4 +202,22 @@ function safeLeadMagnetHref(value: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function stripRedundantLeadingTitle(content: string, title: string) {
+  const titleKey = normalizeHeadingText(title);
+
+  return content.replace(
+    /^\s*#\s+(.+?)\s*(?:\n+|$)/,
+    (match, heading: string) =>
+      normalizeHeadingText(heading) === titleKey ? "" : match,
+  );
+}
+
+function normalizeHeadingText(value: string) {
+  return value
+    .replace(/[*_`[\]()]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }

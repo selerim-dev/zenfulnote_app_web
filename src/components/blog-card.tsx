@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { BlogImage } from "@/components/blog-image";
 import type { BlogPost } from "@/lib/posts";
+import { getBlogImageAlt } from "@/lib/seo";
 
 type BlogCardProps = {
   post: BlogPost;
@@ -27,7 +28,7 @@ export function BlogCard({ post, priority = false }: BlogCardProps) {
           />
           <BlogImage
             src={post.featuredImage}
-            alt={post.featuredImageAlt ?? ""}
+            alt={getBlogImageAlt(post)}
             fill
             sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
             className="object-contain p-5 transition duration-300 group-hover:scale-[1.02]"

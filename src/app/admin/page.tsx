@@ -90,7 +90,7 @@ function AdminAuthFrame({ children }: { children: ReactNode }) {
               <div className="flex items-center gap-3">
                 <Image
                   src="/images/brand/app-icon-1024.png"
-                  alt=""
+                  alt="ZenfulNote app icon"
                   width={42}
                   height={42}
                   className="size-10 rounded-lg border border-white/20"

@@ -17,17 +17,21 @@ export function SiteFooter() {
     <footer className="border-t border-black/10 bg-[#101010] text-white">
       <div className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1.2fr_1fr_1fr] lg:px-8">
         <div>
-          <Link href="/" className="flex items-center gap-3">
+          <Link
+            href="/"
+            aria-label="ZenfulNote home"
+            className="flex items-center gap-3"
+          >
             <Image
               src="/images/brand/app-icon-1024.png"
-              alt=""
+              alt="ZenfulNote app icon"
               width={42}
               height={42}
               className="size-[42px] rounded-lg"
             />
             <Image
               src="/images/brand/wordmark-white-large.png"
-              alt=""
+              alt="ZenfulNote"
               width={170}
               height={42}
               className="h-7 w-auto"
@@ -70,7 +74,7 @@ export function SiteFooter() {
             >
               <Image
                 src="/images/brand/instagram.png"
-                alt=""
+                alt="Instagram"
                 width={22}
                 height={22}
               />
@@ -84,7 +88,7 @@ export function SiteFooter() {
             >
               <Image
                 src="/images/brand/tiktok.png"
-                alt=""
+                alt="TikTok"
                 width={22}
                 height={22}
               />
